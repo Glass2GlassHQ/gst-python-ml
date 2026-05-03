@@ -1,5 +1,7 @@
 # GStreamer Python ML
 
+[![CI](https://github.com/collabora/gst-python-ml/actions/workflows/ci.yml/badge.svg)](https://github.com/collabora/gst-python-ml/actions/workflows/ci.yml)
+
 This project provides a pure Python ML framework for upstream GStreamer, supporting a broad range of ML vision and language features. 
 
 Supported functionality includes:
