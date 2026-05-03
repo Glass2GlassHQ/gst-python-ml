@@ -81,7 +81,7 @@ sudo dnf install -y python3-pip \
 [Environment]::SetEnvironmentVariable("GST_PLUGIN_PATH", "D:\Workspace\gst-python-ml\plugins;D:\Workspace\gst-python-ml\demos", "User")
 ```
 
-3. **Install Python 3.14+** from [python.org](https://www.python.org/downloads/) or via conda.
+3. **Install Python 3.12+** from [python.org](https://www.python.org/downloads/) or via conda.
 
 4. **Install PyGObject** — on Windows the easiest route is via conda or the
    [gstreamer-python](https://pypi.org/project/gstreamer-python/) wheel:
@@ -112,8 +112,8 @@ GStreamer's Python plugin loader (`libgstpython.so`) embeds the system Python in
 The virtual environment **must** be created with the same Python version that GStreamer uses,
 otherwise `import` errors will occur at runtime (e.g. `No module named 'torch'`).
 
-On Fedora 42+ this is Python 3.14. On Ubuntu 26.04+ this is Python 3.14
-depending on the distribution version.
+On Fedora 42+ this is Python 3.14. On Ubuntu 26.04 this is Python 3.14.
+On Ubuntu 24.04 this is Python 3.12.
 
 ##### set up venv with system Python
 
@@ -171,6 +171,8 @@ uv sync --extra mlx
 
 #### ExecuTorch
 
+Requires Python 3.10–3.13 (no 3.14 wheel yet).
+
 ```
 pip install executorch
 ```
@@ -196,13 +198,35 @@ CMAKE_ARGS="-DGGML_CUDA=on" pip install llama-cpp-python
 
 #### Candle
 
+Candle (HuggingFace Rust inference) requires building from source with `maturin`:
 ```
-pip install candle
+pip install maturin
+git clone https://github.com/huggingface/candle.git
+cd candle/candle-pyo3
+maturin develop -r
 ```
-or
+
+#### Apache TVM
+
+TVM is a deep learning compiler for model optimization and deployment. The PyPI
+`apache-tvm` package is stale — install from source:
+
 ```
-uv sync --extra candle
+sudo apt install zlib1g-dev libxml2-dev  # Ubuntu/Debian
+git clone --recursive https://github.com/apache/tvm.git
+cd tvm
+mkdir build && cd build
+cp ../cmake/config.cmake .
+echo "set(CMAKE_BUILD_TYPE RelWithDebInfo)" >> config.cmake
+echo "set(USE_LLVM \"llvm-config --ignore-libllvm --link-static\")" >> config.cmake
+echo "set(USE_CUDA ON)" >> config.cmake  # set OFF if no GPU
+cmake .. && cmake --build . --parallel $(nproc)
+cd ../3rdparty/tvm-ffi && pip install . && cd ../..
+pip install -e .
 ```
+
+Requires: CMake >= 3.24, LLVM >= 15, Python >= 3.10.
+See [TVM install docs](https://tvm.apache.org/docs/install/from_source.html) for full details.
 
 #### JAX
 
@@ -552,6 +576,31 @@ gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
   d. ! queue ! videoconvert ! videoscale \
   ! "video/x-raw,format=RGB,width=224,height=224" \
   ! pyml_classifier model-name=resnet18 device=cpu engine-name=tinygrad \
+  ! fakesink
+```
+
+#### TVM Engine
+
+Apache TVM compiles models for optimized inference. Supports compiled `.so`/`.tar`
+models and TorchVision models (auto-compiled via Relay). Set `engine-name=tvm`.
+
+##### TorchVision model compiled with TVM
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=224,height=224" \
+  ! pyml_classifier model-name=resnet18 device=cuda engine-name=tvm \
+  ! fakesink
+```
+
+##### Pre-compiled TVM model (.so)
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_inference engine-name=tvm model-name=compiled_model.so device=cuda \
   ! fakesink
 ```
 
