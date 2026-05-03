@@ -43,6 +43,7 @@ jobs:
             gst-install: |
               sudo apt-get update
               sudo apt-get install -y \
+                gstreamer1.0-tools \
                 gstreamer1.0-plugins-base \
                 gstreamer1.0-plugins-good \
                 gstreamer1.0-plugins-bad \
@@ -139,20 +140,82 @@ jobs:
       - name: Check GStreamer plugin discovery (Linux)
         if: runner.os == 'Linux'
         run: |
-          export GST_PLUGIN_PATH=${{ github.workspace }}/plugins:$GST_PLUGIN_PATH
-          gst-inspect-1.0 python || echo "gst-python loader not available in CI (expected without gstreamer1.0-python3-plugin-loader)"
+          source .venv/bin/activate
+          VENV_SITE=$(python -c "import site; print(site.getsitepackages()[0])")
+          # libgstpython.so uses system Python which needs:
+          # - /usr/lib/python3/dist-packages for gi (python3-gi apt package)
+          # - venv site-packages for pip-installed ML packages
+          # - plugins/python for our GStreamer element modules
+          export PYTHONPATH="/usr/lib/python3/dist-packages:${VENV_SITE}:${{ github.workspace }}/plugins/python"
+          export GST_PLUGIN_PATH=${{ github.workspace }}/plugins
+          # Prevent hostedtoolcache libpython from shadowing system libpython
+          unset LD_LIBRARY_PATH
+          rm -rf ~/.cache/gstreamer-1.0
+          gst-inspect-1.0 python
+          gst-inspect-1.0 pyml_objectdetector
 
       - name: ONNX pipeline smoke test (Linux)
         if: runner.os == 'Linux'
         run: |
           source .venv/bin/activate
           pip install onnxruntime
-          export GST_PLUGIN_PATH=${{ github.workspace }}/plugins:$GST_PLUGIN_PATH
+          VENV_SITE=$(python -c "import site; print(site.getsitepackages()[0])")
+          export PYTHONPATH="/usr/lib/python3/dist-packages:${VENV_SITE}:${{ github.workspace }}/plugins/python"
+          export GST_PLUGIN_PATH=${{ github.workspace }}/plugins
+          unset LD_LIBRARY_PATH
+          rm -rf ~/.cache/gstreamer-1.0
           # Export YOLO model to ONNX
           python -c "from ultralytics import YOLO; YOLO('yolo11n.pt').export(format='onnx')"
-          # Run 2-frame pipeline on CPU
-          gst-launch-1.0 filesrc location=data/people.mp4 num-buffers=2 \
-            ! decodebin ! queue ! videoconvert ! videoscale \
+          # Run 2-frame smoke test with synthetic source (avoids codec deps)
+          gst-launch-1.0 videotestsrc num-buffers=2 \
+            ! "video/x-raw,format=RGB,width=640,height=640" \
+            ! pyml_objectdetector engine-name=onnx model-name=yolo11n.onnx device=cpu input-format=nchw post-process=anchor_free \
+            ! fakesink
+
+      - name: ONNX pipeline smoke test (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # brew's libgstpython.dylib embeds brew's Python (not actions/setup-python).
+          # Install ML packages into brew's Python so libgstpython can find them.
+          BREW_PREFIX=$(brew --prefix)
+          BREW_PIP="${BREW_PREFIX}/bin/pip3"
+          BREW_PYTHON="${BREW_PREFIX}/bin/python3"
+          ${BREW_PIP} install --break-system-packages ultralytics onnxruntime onnx numpy opencv-python-headless
+          export GST_PLUGIN_PATH=${{ github.workspace }}/plugins
+          export PYTHONPATH=${{ github.workspace }}/plugins/python
+          # Export YOLO model to ONNX
+          ${BREW_PYTHON} -c "from ultralytics import YOLO; YOLO('yolo11n.pt').export(format='onnx')"
+          # Run 2-frame smoke test with synthetic source (avoids codec deps)
+          gst-launch-1.0 videotestsrc num-buffers=2 \
+            ! "video/x-raw,format=RGB,width=640,height=640" \
+            ! pyml_objectdetector engine-name=onnx model-name=yolo11n.onnx device=cpu input-format=nchw post-process=anchor_free \
+            ! fakesink
+
+      - name: ONNX pipeline smoke test (Windows)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        shell: bash
+        run: |
+          source .venv/Scripts/activate
+          pip install onnxruntime
+          SITE_PKGS=$(python -c "import site; print(site.getsitepackages()[0])")
+          # Find GStreamer install location
+          GST_BIN=$(find /c/gstreamer -name "gst-launch-1.0.exe" 2>/dev/null | head -1 | xargs dirname)
+          if [[ -z "$GST_BIN" ]]; then
+            echo "ERROR: gst-launch-1.0.exe not found under /c/gstreamer"
+            find /c/gstreamer -type f -name "gst-*" 2>/dev/null || echo "No gst binaries found"
+            ls /c/gstreamer/ 2>/dev/null || echo "/c/gstreamer does not exist"
+            exit 1
+          fi
+          echo "Found GStreamer at: $GST_BIN"
+          export PATH="${GST_BIN}:$PATH"
+          GST_LIB=$(dirname "$GST_BIN")/lib/gstreamer-1.0
+          export GST_PLUGIN_PATH="${{ github.workspace }}/plugins;${GST_LIB}"
+          export PYTHONPATH="${SITE_PKGS};${{ github.workspace }}/plugins/python;$PYTHONPATH"
+          # Export YOLO model to ONNX
+          python -c "from ultralytics import YOLO; YOLO('yolo11n.pt').export(format='onnx')"
+          # Run 2-frame smoke test with synthetic source (avoids codec deps)
+          gst-launch-1.0.exe videotestsrc num-buffers=2 \
             ! "video/x-raw,format=RGB,width=640,height=640" \
             ! pyml_objectdetector engine-name=onnx model-name=yolo11n.onnx device=cpu input-format=nchw post-process=anchor_free \
             ! fakesink
