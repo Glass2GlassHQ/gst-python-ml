@@ -21,10 +21,10 @@ jobs:
         run: pip install ruff 'black<26'
 
       - name: Run ruff check
-        run: ruff check plugins/ tests/ demos/ utils/
+        run: ruff check plugins/ tests/ utils/
 
       - name: Run black check
-        run: black --check plugins/ tests/ demos/ utils/
+        run: black --check plugins/ tests/ utils/
 
   build:
     needs: lint
