@@ -1582,7 +1582,7 @@ pip install -e .
 <span class="cmt"># pip install ./flash_attn-*.whl</span>
 
 <span class="cmt"># Set plugin path and run</span>
-<span class="kw">export</span> GST_PLUGIN_PATH=<span class="str">$PWD/demos:$PWD/plugins:$GST_PLUGIN_PATH</span>
+<span class="kw">export</span> GST_PLUGIN_PATH=<span class="str">$PWD/plugins:$GST_PLUGIN_PATH</span>
 gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin \
   ! videoconvert ! videoscale ! video/x-raw,width=<span class="num">640</span>,height=<span class="num">480</span> \
   ! pyml_yolo model-name=yolo11m device=cuda ! pyml_overlay \
@@ -1621,7 +1621,7 @@ pip install -e .
 <span class="cmt"># pip install ./flash_attn-*.whl</span>
 
 <span class="cmt"># Set plugin path and run</span>
-<span class="kw">export</span> GST_PLUGIN_PATH=<span class="str">$PWD/demos:$PWD/plugins:$GST_PLUGIN_PATH</span></pre>
+<span class="kw">export</span> GST_PLUGIN_PATH=<span class="str">$PWD/plugins:$GST_PLUGIN_PATH</span></pre>
                 </div>
                 <div class="tab-panel" id="tab-docker">
 <pre><span class="cmt"># Build Docker container (Fedora 42 — recommended, has Python 3.14)</span>
@@ -1655,7 +1655,7 @@ pip install -e .</pre>
 [Environment]::SetEnvironmentVariable(<span class="str">"PATH"</span>,
   <span class="str">"C:\gstreamer\1.0\msvc_x86_64\bin;"</span> + $env:PATH, <span class="str">"User"</span>)
 [Environment]::SetEnvironmentVariable(<span class="str">"GST_PLUGIN_PATH"</span>,
-  <span class="str">"D:\gst-python-ml\plugins;D:\gst-python-ml\demos"</span>, <span class="str">"User"</span>)
+  <span class="str">"D:\gst-python-ml\plugins"</span>, <span class="str">"User"</span>)
 
 <span class="cmt"># 3. Install Python 3.12+ and PyGObject</span>
 pip install gstreamer-python

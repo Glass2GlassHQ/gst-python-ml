@@ -78,7 +78,7 @@ sudo dnf install -y python3-pip \
 [Environment]::SetEnvironmentVariable("PATH", "C:\gstreamer\1.0\msvc_x86_64\bin;" + $env:PATH, "User")
 
 # Point GStreamer at your plugin directory
-[Environment]::SetEnvironmentVariable("GST_PLUGIN_PATH", "D:\Workspace\gst-python-ml\plugins;D:\Workspace\gst-python-ml\demos", "User")
+[Environment]::SetEnvironmentVariable("GST_PLUGIN_PATH", "D:\Workspace\gst-python-ml\plugins", "User")
 ```
 
 3. **Install Python 3.12+** from [python.org](https://www.python.org/downloads/) or via conda.
@@ -267,7 +267,7 @@ git clone https://github.com/collabora/gst-python-ml.git
 #### Update .bashrc
 
 ```
-echo 'export GST_PLUGIN_PATH=$HOME/src/gst-python-ml/demos:$HOME/src/gst-python-ml/plugins:$GST_PLUGIN_PATH' >> ~/.bashrc
+echo 'export GST_PLUGIN_PATH=$HOME/src/gst-python-ml/plugins:$GST_PLUGIN_PATH' >> ~/.bashrc
 source ~/.bashrc
 ```
 
