@@ -456,6 +456,11 @@ if CAN_REGISTER_ELEMENT:
     __gstelementfactory__ = ("my_detector", Gst.Rank.NONE, MyDetector)
 ```
 
+Note: When a pipeline begins, GStreamer scans all scripts for GStreamer elements, including elements that are not actually in the pipeline. To ensure that startup
+is fast, please avoid placing heavy imports such as NumPy at the module level, as these
+will be imported by GStreamer. Instead, favour importing at the method level - since Python caches imports, this will have no performance impact.
+
+
 ### Environment Setup
 
 Set both `GST_PLUGIN_PATH` (so GStreamer discovers your `.py` files) and `PYTHONPATH`
