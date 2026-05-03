@@ -381,6 +381,84 @@ Now, in the container shell, set up the `venv` as detailed above.
 
 Run `gst-inspect-1.0 python` to list pyml elements.
 
+## Custom Plugins
+
+You can create your own GStreamer elements that inherit from the gst-python-ml base classes
+(`BaseObjectDetector`, `BaseTransform`, `BaseClassifier`, etc.) in a separate directory.
+
+### Directory Structure
+
+```
+my_plugins/
+  python/
+    my_detector.py
+    my_classifier.py
+```
+
+### Example: Custom Object Detector
+
+```python
+CAN_REGISTER_ELEMENT = True
+try:
+    import gi
+    gi.require_version("Gst", "1.0")
+    gi.require_version("GstBase", "1.0")
+    gi.require_version("GObject", "2.0")
+    from gi.repository import GObject, Gst, GstBase
+    from base_objectdetector import BaseObjectDetector
+except ImportError as e:
+    CAN_REGISTER_ELEMENT = False
+    print(f"my_detector not available: {e}")
+
+if CAN_REGISTER_ELEMENT:
+    class MyDetector(BaseObjectDetector):
+        __gstmetadata__ = (
+            "My Custom Detector",
+            "Video/Filter",
+            "A custom object detector",
+            "Your Name",
+        )
+
+    GObject.type_register(MyDetector)
+    __gstelementfactory__ = ("my_detector", Gst.Rank.NONE, MyDetector)
+```
+
+### Environment Setup
+
+Set both `GST_PLUGIN_PATH` (so GStreamer discovers your `.py` files) and `PYTHONPATH`
+(so Python can import your modules):
+
+```bash
+export GST_PLUGIN_PATH=$HOME/src/gst-python-ml/plugins:$HOME/my_plugins:$GST_PLUGIN_PATH
+export PYTHONPATH=$HOME/my_plugins/python:$PYTHONPATH
+```
+
+The gst-python loader adds the first `python/` directory it finds to `sys.path`.
+By listing the framework directory first, all gst-python-ml base classes (`base_objectdetector`,
+`base_transform`, `base_classifier`, `base_caption`, `base_llm`, etc.) are importable
+by custom plugins. The `PYTHONPATH` entry ensures gst-python can also resolve your
+custom modules from the second directory.
+
+### Available Base Classes
+
+| Base Class | Module | Description |
+|---|---|---|
+| `BaseTransform` | `base_transform` | Base for all video transform elements |
+| `BaseObjectDetector` | `base_objectdetector` | Object detection with bounding boxes |
+| `BaseClassifier` | `base_classifier` | Image classification |
+| `BaseCaption` | `base_caption` | Video/image captioning |
+| `BaseLLM` | `base_llm` | Large language models |
+| `BaseTranscribe` | `base_transcribe` | Speech-to-text transcription |
+| `BaseTranslate` | `base_translate` | Text translation |
+| `BaseTTS` | `base_tts` | Text-to-speech synthesis |
+| `BaseSeparate` | `base_separate` | Audio source separation |
+
+### Verify
+
+```bash
+gst-inspect-1.0 my_detector
+```
+
 ## Using GStreamer Python ML Elements
 
 ## Pipelines
