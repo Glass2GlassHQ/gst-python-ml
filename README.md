@@ -26,6 +26,37 @@ All testing thus far has been done primarily with PyTorch.
 These elements will work with your distribution's GStreamer packages as long as the GStreamer version
 is >= 1.24.
 
+## Table of Contents
+
+- [Install](#install)
+  - [Host Install](#host-install)
+  - [Docker Install](#docker-install)
+- [Post Install](#post-install)
+- [Custom Plugins](#custom-plugins)
+- [Pipelines](#pipelines)
+  - [Classification](#classification)
+  - [Object Detection](#object-detection)
+  - [Pose Estimation](#pose-estimation)
+  - [Depth Estimation](#depth-estimation)
+  - [Zero-Shot Classification (CLIP / SigLIP)](#zero-shot-classification-clip--siglip)
+  - [Voice Activity Detection](#voice-activity-detection)
+  - [Transcription](#transcription)
+  - [LLM](#llm)
+  - [Stable Diffusion](#stablediffusion)
+  - [Kafka Sink](#kafkasink)
+  - [Segment Anything (SAM)](#segment-anything-sam)
+  - [OCR](#ocr)
+  - [Face Detection & Recognition](#face-detection--recognition)
+  - [Optical Flow](#optical-flow)
+  - [Super-Resolution](#super-resolution)
+  - [Action Recognition](#action-recognition)
+  - [Anomaly Detection](#anomaly-detection)
+  - [Audio Classification (CLAP)](#audio-classification-clap)
+  - [Vision-Language Model (VLM)](#vision-language-model-vlm)
+  - [Embedding Extractor](#embedding-extractor)
+  - [Multi-Object Tracker](#multi-object-tracker)
+  - [ML Alert](#ml-alert)
+
 ## Install
 
 There are two installation options described below: on host machine or on Docker container:
