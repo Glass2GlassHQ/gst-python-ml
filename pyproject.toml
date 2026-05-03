@@ -84,10 +84,22 @@ jax-gpu = [
 jax-tpu = [
     "jax[tpu]",
 ]
+openvino = [
+    "openvino>=2024.0",
+]
+tensorflow = [
+    "tensorflow>=2.16.0",
+]
+litert = [
+    "ai-edge-litert",
+]
 vad = [
     "pysilero",
     "pysilero-vad",
     "faster-whisper",
+]
+all = [
+    "gst-python-ml[onnx,tinygrad,llamacpp,openvino,tensorflow,litert,vad]",
 ]
 
 # Optional
