@@ -899,7 +899,7 @@
     <div class="hero-content">
         <div class="hero-badge">
             <div class="badge-dot"></div>
-            Open Source &middot; <span>v1.0.5</span>
+            Open Source &middot; <span>v1.1.0</span>
         </div>
         <h1>Pure Python ML for<br><em>GStreamer</em></h1>
         <p class="hero-sub">
@@ -1556,7 +1556,7 @@
             </div>
             <div class="tab-body">
                 <div class="tab-panel active" id="tab-ubuntu">
-<pre><span class="cmt"># Ubuntu 26.04+ (requires Python 3.14+)</span>
+<pre><span class="cmt"># Ubuntu 24.04 (Python 3.12) or Ubuntu 26.04+ (Python 3.14)</span>
 <span class="cmt"># Install system packages</span>
 sudo apt update &amp;&amp; sudo apt -y upgrade
 sudo apt install -y python3-pip python3-venv \
@@ -1627,8 +1627,11 @@ pip install -e .
 <pre><span class="cmt"># Build Docker container (Fedora 42 — recommended, has Python 3.14)</span>
 docker build -f ./Dockerfile_fedora42 -t fedora42:latest .
 
-<span class="cmt"># Or Ubuntu 26.04</span>
+<span class="cmt"># Or Ubuntu 26.04 (Python 3.14)</span>
 docker build -f ./Dockerfile_ubuntu26 -t ubuntu26:latest .
+
+<span class="cmt"># Or Ubuntu 24.04 (Python 3.12)</span>
+docker build -f ./Dockerfile_ubuntu24 -t ubuntu24:latest .
 
 <span class="cmt"># Run with GPU</span>
 docker run -v ~/src/gst-python-ml/:/root/gst-python-ml \
@@ -1654,7 +1657,7 @@ pip install -e .</pre>
 [Environment]::SetEnvironmentVariable(<span class="str">"GST_PLUGIN_PATH"</span>,
   <span class="str">"D:\gst-python-ml\plugins;D:\gst-python-ml\demos"</span>, <span class="str">"User"</span>)
 
-<span class="cmt"># 3. Install Python 3.14+ and PyGObject</span>
+<span class="cmt"># 3. Install Python 3.12+ and PyGObject</span>
 pip install gstreamer-python
 
 <span class="cmt"># 4. Install CUDA PyTorch (optional)</span>
@@ -1677,17 +1680,17 @@ pip install torch torchvision torchaudio \
             <div class="deploy-card">
                 <div class="d-icon">&#128421;</div>
                 <h3>Linux (Ubuntu / Fedora)</h3>
-                <p>Native host installation with distribution GStreamer packages. Full GPU support with NVIDIA CUDA. Tested on Ubuntu 26.04 and Fedora 42.</p>
+                <p>Native host installation with distribution GStreamer packages. Full GPU support with NVIDIA CUDA. Tested on Ubuntu 24.04, Ubuntu 26.04, and Fedora 42.</p>
             </div>
             <div class="deploy-card">
                 <div class="d-icon">&#128051;</div>
                 <h3>Docker</h3>
-                <p>Pre-built Dockerfiles for Ubuntu 26.04 and Fedora 42. NVIDIA Container Toolkit for GPU pass-through. CPU-only mode available.</p>
+                <p>Pre-built Dockerfiles for Ubuntu 24.04, Ubuntu 26.04, and Fedora 42. NVIDIA Container Toolkit for GPU pass-through. CPU-only mode available.</p>
             </div>
             <div class="deploy-card">
                 <div class="d-icon">&#128187;</div>
                 <h3>Windows</h3>
-                <p>GStreamer MSVC runtime with Python 3.14+. CUDA GPU support via PyTorch. PowerShell setup scripts included.</p>
+                <p>GStreamer MSVC runtime with Python 3.12+. CUDA GPU support via PyTorch. PowerShell setup scripts included.</p>
             </div>
         </div>
     </div>
