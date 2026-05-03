@@ -20,7 +20,6 @@ import collections
 import sys
 from abc import abstractmethod
 
-import numpy as np
 import gi
 
 gi.require_version("Gst", "1.0")
@@ -144,6 +143,8 @@ class BaseTranscribe(BaseAggregator):
         return outbuf
 
     def do_process(self, buf):
+        import numpy as np
+
         self.push_segment_if_needed()
         """Process audio data from the input buffers using VAD and Whisper."""
         audio_collected = False
@@ -232,6 +233,8 @@ class BaseTranscribe(BaseAggregator):
         Transcribes the buffered audio data
         and returns the transcript for streaming.
         """
+        import numpy as np
+
         try:
             # Get the current audio data from the buffer for streaming transcription
             audio_data = np.array(chunk).astype(np.float32) / 32768.0

@@ -28,7 +28,6 @@ try:
     gi.require_version("GObject", "2.0")
     from gi.repository import Gst, GstBase  # noqa: E402
     from base_aggregator import BaseAggregator
-    import numpy as np
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
     GlobalLogger().warning(
@@ -124,6 +123,8 @@ class StableDiffusion(BaseAggregator):
         """
         Generate image from text prompt using Stable Diffusion.
         """
+        import numpy as np
+
         self.logger.info(f"Generating image for prompt: {prompt}")
         image = self.get_model()(prompt).images[0]  # Generate image for the prompt
 

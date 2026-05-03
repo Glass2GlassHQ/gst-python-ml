@@ -21,7 +21,6 @@ import sys
 from abc import abstractmethod
 
 import traceback
-import numpy as np
 import gi
 
 gi.require_version("Gst", "1.0")
@@ -109,6 +108,8 @@ class BaseSeparate(BaseAggregator):
         return outbuf
 
     def do_process(self, buf):
+        import numpy as np
+
         self.push_segment_if_needed()
         """Process audio data from the input buffers using source separation."""
         audio_collected = False
@@ -185,6 +186,8 @@ class BaseSeparate(BaseAggregator):
         Separates the buffered audio data
         and returns the separated stem as np.int16.
         """
+        import numpy as np
+
         try:
             # Get the current audio data from the buffer for separation
             audio_data = chunk.astype(np.float32) / 32768.0

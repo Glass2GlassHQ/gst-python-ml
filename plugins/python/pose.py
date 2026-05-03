@@ -24,7 +24,6 @@ try:
     import json
 
     import gi
-    import numpy as np
 
     gi.require_version("Gst", "1.0")
     gi.require_version("GstBase", "1.0")
@@ -101,6 +100,8 @@ class YoloPoseEngine(PyTorchEngine):
             raise ValueError(f"Failed to load YOLO pose model '{model_name}': {e}")
 
     def do_forward(self, frames):
+        import numpy as np
+
         is_batch = isinstance(frames, np.ndarray) and frames.ndim == 4
         writable = np.array(frames, copy=True)
         batch_size = writable.shape[0] if is_batch else 1
@@ -245,6 +246,8 @@ class YOLOPoseTransform(BaseObjectDetector):
 
     def _write_annotated_frame(self, buf, result):
         """Write result.plot() (BGR) back into the GStreamer buffer."""
+        import numpy as np
+
         try:
             annotated_bgr = result.plot(kpt_line=True, kpt_radius=4)
             fmt = FormatConverter.get_video_format(buf, self.sinkpad)
@@ -267,6 +270,7 @@ class YOLOPoseTransform(BaseObjectDetector):
     @staticmethod
     def _convert_bgr_to_format(bgr, fmt):
         """Convert a BGR numpy array to the target GStreamer video format."""
+        import numpy as np
         import cv2
 
         if fmt == "RGB":

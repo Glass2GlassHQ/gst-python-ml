@@ -19,7 +19,6 @@
 from abc import abstractmethod
 import io
 import asyncio
-import soundfile as sf
 import gi
 
 from base_aggregator import BaseAggregator
@@ -148,6 +147,8 @@ class BaseTts(BaseAggregator):
             return Gst.FlowReturn.ERROR
 
     async def process_transcript(self, transcript):
+        import soundfile as sf
+
         try:
             tts_output = self.do_generate_speech(transcript)
             with io.BytesIO() as buffer:

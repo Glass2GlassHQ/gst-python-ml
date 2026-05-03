@@ -25,7 +25,6 @@ try:
     gi.require_version("Gst", "1.0")
     gi.require_version("GstBase", "1.0")
     from gi.repository import Gst, GObject, GstBase  # noqa: E402
-    import numpy as np
     from base_tts import BaseTts
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
@@ -86,6 +85,8 @@ class WhisperSpeechTTS(BaseTts):
             self.logger.error(f"Exception during model initialization: {e}")
 
     def do_generate_speech(self, transcript):
+        import numpy as np
+
         audio_tensor = self.get_model().generate(transcript, lang=self.language)
         audio_np = (audio_tensor.cpu().numpy() * 32767).astype(
             np.int16

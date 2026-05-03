@@ -23,7 +23,6 @@ try:
     import threading
 
     import gi
-    import numpy as np
 
     gi.require_version("Gst", "1.0")
     gi.require_version("GstBase", "1.0")
@@ -88,6 +87,7 @@ class ClipEngine(PyTorchEngine):
             List of (label, probability) tuples sorted by probability descending,
             or None if no labels are set.
         """
+        import numpy as np
         import torch
         from PIL import Image
 

@@ -19,7 +19,6 @@
 
 from utils.runtime_utils import runtime_check_gstreamer_version
 import gi
-import numpy as np
 from video_transform import VideoTransform
 
 gi.require_version("Gst", "1.0")
@@ -53,6 +52,8 @@ class BaseClassifier(VideoTransform):
         """
         Processes an image and attaches classification metadata.
         """
+        import numpy as np
+
         try:
             with buf.map(Gst.MapFlags.READ | Gst.MapFlags.WRITE) as info:
                 if info.data is None:
@@ -82,6 +83,8 @@ class BaseClassifier(VideoTransform):
         """
         Decodes classification output and attaches metadata.
         """
+        import numpy as np
+
         if isinstance(output, dict):
             label = output.get("labels")  # e.g., [405]
             score = output.get("scores")  # e.g., [0.057...]

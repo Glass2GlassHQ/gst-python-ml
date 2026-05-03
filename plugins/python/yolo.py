@@ -30,7 +30,6 @@ try:
     from gi.repository import Gst, GObject, GstAnalytics, GLib  # noqa: E402
     from base_objectdetector import BaseObjectDetector
 
-    import numpy as np
     import time
     from engine.pytorch_engine import PyTorchEngine
     from engine.engine_factory import EngineFactory
@@ -135,6 +134,8 @@ class YoloEngine(PyTorchEngine):
             raise ValueError(f"Failed to load YOLO model '{model_name}'. Error: {e}")
 
     def do_forward(self, frames):
+        import numpy as np
+
         is_batch = isinstance(frames, np.ndarray) and frames.ndim == 4
         writable_frames = np.array(frames, copy=True)
         batch_size = writable_frames.shape[0] if is_batch else 1

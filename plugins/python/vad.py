@@ -24,7 +24,6 @@ try:
     import struct
 
     import gi
-    import numpy as np
 
     gi.require_version("Gst", "1.0")
     gi.require_version("GstBase", "1.0")
@@ -131,6 +130,8 @@ class VoiceActivityDetector(GstBase.BaseTransform):
         return True
 
     def do_transform_ip(self, buf):
+        import numpy as np
+
         if self._vad is None:
             return Gst.FlowReturn.OK
 

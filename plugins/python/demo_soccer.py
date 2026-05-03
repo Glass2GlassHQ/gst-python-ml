@@ -30,9 +30,6 @@ try:
     from gi.repository import Gst, GObject, GstAnalytics, GLib  # noqa: E402
     from base_objectdetector import BaseObjectDetector
 
-    import numpy as np
-
-    import cv2
     import os
     from collections import deque
     from engine.pytorch_engine import PyTorchEngine
@@ -112,6 +109,8 @@ COCO_CLASSES = {
 
 
 def eye3():
+    import numpy as np
+
     return np.eye(3, dtype=np.float32)
 
 
@@ -129,6 +128,9 @@ def estimate_global_motion(
     frame_idx,
     verbose=False,
 ):
+    import cv2
+    import numpy as np
+
     if gmc_mode == "off":
         if verbose:
             print(f"[frame {frame_idx}] GMC OFF → I")
@@ -204,6 +206,8 @@ def estimate_global_motion(
 
 
 def warp_points(points_xy, M):
+    import numpy as np
+
     if not points_xy:
         return []
     P = np.c_[
@@ -215,6 +219,8 @@ def warp_points(points_xy, M):
 
 
 def classwise_keep(result, person_thr, ball_thr):
+    import numpy as np
+
     if result is None or result.boxes is None or len(result.boxes) == 0:
         return np.zeros((0, 6), np.float32), np.zeros((0, 6), np.float32)
 
@@ -343,6 +349,8 @@ class BoTSORTWrapper:
         self._install_safe_encoder()
 
     def _install_safe_encoder(self):
+        import cv2
+        import numpy as np
         import torch as _torch
 
         def _safe_hsv_hist(img_bgr, bboxes):
@@ -452,12 +460,16 @@ class BallState:
 
 
 def _aspect_round_penalty(w, h):
+    import numpy as np
+
     ar = w / max(h, 1e-6)
     roundness = np.exp(-((ar - 1.0) ** 2) / 0.15)
     return 1.0 - float(roundness)
 
 
 def _size_penalty(w, h, H, W):
+    import numpy as np
+
     s = max(w, h)
     tgt = 0.03 * min(H, W)
     return float(np.clip(abs(s - tgt) / (tgt + 1e-6), 0.0, 2.0)) * 0.5
@@ -473,6 +485,8 @@ def select_best_ball(
     w_size=0.5,
     w_round=0.4,
 ):
+    import numpy as np
+
     if dets_b is None or len(dets_b) == 0:
         return None
     H, W = frame_shape
@@ -504,6 +518,8 @@ def select_best_ball(
 
 
 def nms_class(dets, iou_thr=0.5):
+    import numpy as np
+
     if dets is None or len(dets) == 0:
         return dets
     boxes = dets[:, :4].copy()
@@ -583,6 +599,8 @@ def gate_accept(
     pred=None,
     from_track=True,
 ):
+    import numpy as np
+
     if center is None:
         return False
 
@@ -624,6 +642,8 @@ def gate_accept(
 
 
 def safe_int_pair(wx, wy, W, H):
+    import numpy as np
+
     if wx is None or wy is None:
         return None
     if not (np.isfinite(wx) and np.isfinite(wy)):
@@ -758,6 +778,9 @@ class YoloAdvancedEngine(PyTorchEngine):
             return False  # No raise—let base handle
 
     def do_forward(self, frames):
+        import cv2
+        import numpy as np
+
         is_batch = isinstance(frames, np.ndarray) and frames.ndim == 4
         if is_batch:
             frame_bgr = frames[0]  # Assume single for stateful; extend if needed

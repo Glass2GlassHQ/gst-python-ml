@@ -23,7 +23,6 @@ try:
     import ctypes
 
     import gi
-    import numpy as np
 
     gi.require_version("Gst", "1.0")
     gi.require_version("GstBase", "1.0")
@@ -78,6 +77,7 @@ class DepthAnythingEngine(PyTorchEngine):
             raise ValueError(f"Failed to load depth model '{model_name}': {e}")
 
     def do_forward(self, frames):
+        import numpy as np
         import torch
         import torch.nn.functional as F
         from PIL import Image
@@ -204,6 +204,7 @@ class DepthTransform(VideoTransform):
     def _apply_depth(self, buf, depth_map, fmt):
         """Normalize depth, optionally visualize, then append as metadata."""
         import cv2
+        import numpy as np
 
         d_min, d_max = depth_map.min(), depth_map.max()
         if d_max > d_min:
@@ -242,6 +243,7 @@ class DepthTransform(VideoTransform):
     def _convert_bgr_to_format(bgr, fmt):
         """Convert a BGR numpy array to the target GStreamer video format."""
         import cv2
+        import numpy as np
 
         if fmt == "RGB":
             return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)

@@ -28,7 +28,6 @@ try:
     from gi.repository import Gst, GObject, GstBase  # noqa: E402
     from base_separate import BaseSeparate
     import os
-    import numpy as np
 
     from engine.pytorch_engine import PyTorchEngine
     from engine.engine_factory import EngineFactory
@@ -172,6 +171,7 @@ class Sepformer(BaseSeparate):
         raise ValueError("engine_name cannot be set")
 
     def do_separate(self, audio_data):
+        import numpy as np
         import torch
 
         engine = self.engine

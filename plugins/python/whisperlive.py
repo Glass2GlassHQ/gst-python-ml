@@ -27,7 +27,6 @@ try:
     gi.require_version("GObject", "2.0")
     from gi.repository import Gst, GObject, GstBase  # noqa: E402
     from base_transcribe import BaseTranscribe
-    import numpy as np
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
     GlobalLogger().warning(
@@ -157,6 +156,8 @@ class WhisperLive(BaseTranscribe):
         return result
 
     def do_process_text(self, transcript):
+        import numpy as np
+
         # Ensure LLM model and tokenizer are initialized
         if not self.llm_tokenizer or not self.llm_model:
             self.logger.error("Tokenizer or model not initialized.")
