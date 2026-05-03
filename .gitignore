@@ -1,5 +1,14 @@
-__pycache__
-*.egg-*
+__pycache__/
+*.egg-info/
+*.egg
 build/
 dist/
+.venv/
+*.pt
+*.onnx
+*.pth
+*.safetensors
+*.gguf
+runs/
 tests/logs
+.pytest_cache/
