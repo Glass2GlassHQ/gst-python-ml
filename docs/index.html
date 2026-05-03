@@ -887,6 +887,7 @@
             <li><a href="#features">Features</a></li>
             <li><a href="#pipelines">Pipelines</a></li>
             <li><a href="#install">Install</a></li>
+            <li><a href="#custom-plugins">Extend</a></li>
             <li><a href="https://github.com/collabora/gst-python-ml" class="nav-btn-ghost">GitHub</a></li>
             <li><a href="#install" class="nav-btn-green">Get Started</a></li>
         </ul>
@@ -941,7 +942,7 @@
                 <p>ML Engines</p>
             </div>
             <div class="stat-cell">
-                <h3>35+</h3>
+                <h3>39</h3>
                 <p>GStreamer Elements</p>
             </div>
             <div class="stat-cell">
@@ -1664,6 +1665,57 @@ pip install gstreamer-python
 pip install torch torchvision torchaudio \
   --index-url https://download.pytorch.org/whl/cu128</pre>
                 </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══ CUSTOM PLUGINS ═══ -->
+<section id="custom-plugins">
+    <div class="section-inner">
+        <span class="section-label">Extensibility</span>
+        <h2 class="section-title">Build Your Own Plugins</h2>
+        <p class="section-desc">Create custom GStreamer elements that inherit from gst-python-ml base classes. Full access to the engine abstraction, model loading, and pipeline integration.</p>
+
+        <div class="code-block fade-in" style="margin-top: 40px;">
+            <div class="code-header">
+                <span>my_plugins/python/my_detector.py</span>
+            </div>
+<pre><span class="kw">from</span> base_objectdetector <span class="kw">import</span> BaseObjectDetector
+<span class="kw">from</span> gi.repository <span class="kw">import</span> GObject, Gst
+
+<span class="kw">class</span> <span class="str">MyDetector</span>(BaseObjectDetector):
+    __gstmetadata__ = (
+        <span class="str">"My Custom Detector"</span>, <span class="str">"Video/Filter"</span>,
+        <span class="str">"A custom object detector"</span>, <span class="str">"Your Name"</span>,
+    )
+
+GObject.type_register(MyDetector)
+__gstelementfactory__ = (<span class="str">"my_detector"</span>, Gst.Rank.NONE, MyDetector)</pre>
+        </div>
+
+        <div class="code-block fade-in" style="margin-top: 24px;">
+            <div class="code-header">
+                <span>Environment Setup</span>
+            </div>
+<pre><span class="cmt"># Framework first (provides base classes on sys.path), custom second</span>
+<span class="kw">export</span> GST_PLUGIN_PATH=<span class="str">$HOME/src/gst-python-ml/plugins:$HOME/my_plugins:$GST_PLUGIN_PATH</span>
+<span class="kw">export</span> PYTHONPATH=<span class="str">$HOME/my_plugins/python:$PYTHONPATH</span>
+
+<span class="cmt"># Verify your element</span>
+gst-inspect-1.0 my_detector</pre>
+        </div>
+
+        <div class="pipeline-grid fade-in" style="margin-top: 40px;">
+            <div class="pipeline-card">
+                <span class="pipe-tag">Base Classes</span>
+                <h3>Available for Inheritance</h3>
+                <p><code>BaseObjectDetector</code> &middot; <code>BaseTransform</code> &middot; <code>BaseClassifier</code> &middot; <code>BaseCaption</code> &middot; <code>BaseLLM</code> &middot; <code>BaseTranscribe</code> &middot; <code>BaseTranslate</code> &middot; <code>BaseTTS</code> &middot; <code>BaseSeparate</code></p>
+            </div>
+            <div class="pipeline-card">
+                <span class="pipe-tag">Inherited Features</span>
+                <h3>Zero Boilerplate</h3>
+                <p>Engine selection &middot; model loading &middot; device management &middot; buffer handling &middot; metadata propagation &middot; all GObject properties</p>
             </div>
         </div>
     </div>
