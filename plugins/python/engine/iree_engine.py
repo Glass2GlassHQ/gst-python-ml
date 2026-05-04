@@ -71,14 +71,19 @@ class IREEEngine(MLEngine):
         target_backend = self._target_backend_for_driver(self._driver)
 
         # Step 1: Import ONNX to MLIR using iree-import-onnx
-        with tempfile.NamedTemporaryFile(
-            suffix=".mlir", delete=False
-        ) as mlir_file:
+        with tempfile.NamedTemporaryFile(suffix=".mlir", delete=False) as mlir_file:
             mlir_path = mlir_file.name
 
         try:
             result = subprocess.run(
-                ["iree-import-onnx", onnx_path, "--opset-version", "17", "-o", mlir_path],
+                [
+                    "iree-import-onnx",
+                    onnx_path,
+                    "--opset-version",
+                    "17",
+                    "-o",
+                    mlir_path,
+                ],
                 capture_output=True,
                 text=True,
             )
@@ -138,9 +143,7 @@ class IREEEngine(MLEngine):
 
                 self.config = ireert.Config(self._driver)
                 self.context = ireert.SystemContext(config=self.config)
-                vm_module = ireert.VmModule.copy_buffer(
-                    self.context.instance, compiled
-                )
+                vm_module = ireert.VmModule.copy_buffer(self.context.instance, compiled)
                 self.context.add_vm_module(vm_module)
                 self.model = self.context
                 self.logger.info(
@@ -187,10 +190,16 @@ class IREEEngine(MLEngine):
         # Find the module and function
         try:
             # IREE modules are accessible by name; typically "module" for ONNX imports
-            module_name = self.kwargs.get("module_name", "module") if self.kwargs else "module"
+            module_name = (
+                self.kwargs.get("module_name", "module") if self.kwargs else "module"
+            )
             f = self.context.modules[module_name][self.function_name]
             result = f(img)
-            raw = np.asarray(result.to_host()) if hasattr(result, "to_host") else np.asarray(result)
+            raw = (
+                np.asarray(result.to_host())
+                if hasattr(result, "to_host")
+                else np.asarray(result)
+            )
         except Exception as e:
             self.logger.error(f"IREE inference failed: {e}")
             return None

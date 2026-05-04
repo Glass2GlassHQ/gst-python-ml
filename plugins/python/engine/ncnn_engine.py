@@ -98,9 +98,7 @@ class NCNNEngine(MLEngine):
                     f"NCNN Vulkan GPU enabled ({ncnn.get_gpu_count()} device(s))"
                 )
             else:
-                self.logger.warning(
-                    "No Vulkan GPU available, falling back to CPU"
-                )
+                self.logger.warning("No Vulkan GPU available, falling back to CPU")
                 self._use_vulkan = False
                 self.device = "cpu"
         elif device == "cpu":
