@@ -53,6 +53,7 @@ class BaseAggregator(GstBase.Aggregator):
         self.__device_queue_id = 0
         self.__system_prompt = None
         self._prompt = None
+        self.__compile = False
         self.segment_pushed = False
 
     @property
@@ -121,6 +122,19 @@ class BaseAggregator(GstBase.Aggregator):
         self.__device_queue_id = value
         if self.engine:
             self.engine.device_queue_id = value
+
+    @GObject.Property(type=bool, default=False, nick="compile")
+    def compile(self):
+        "Enable torch.compile optimization for the model"
+        return self.__compile
+
+    @compile.setter
+    def compile(self, value):
+        self.__compile = value
+        if value:
+            self.kwargs["compile"] = True
+        else:
+            self.kwargs.pop("compile", None)
 
     def do_change_state(self, transition):
         if transition == Gst.StateChange.NULL_TO_READY:

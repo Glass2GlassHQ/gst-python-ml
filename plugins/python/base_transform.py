@@ -51,6 +51,7 @@ class BaseTransform(GstBase.BaseTransform):
         self.__device_queue_id = 0
         self.__system_prompt = None
         self.__prompt = None
+        self.__compile = False
 
     @property
     def engine(self):
@@ -142,6 +143,19 @@ class BaseTransform(GstBase.BaseTransform):
         self.__device_queue_id = value
         if self.engine:
             self.engine.device_queue_id = value
+
+    @GObject.Property(type=bool, default=False, nick="compile")
+    def compile(self):
+        "Enable torch.compile optimization for the model"
+        return self.__compile
+
+    @compile.setter
+    def compile(self, value):
+        self.__compile = value
+        if value:
+            self.kwargs["compile"] = True
+        else:
+            self.kwargs.pop("compile", None)
 
     def do_start(self):
         self.do_load_model()

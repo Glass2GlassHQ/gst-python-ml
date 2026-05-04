@@ -1443,6 +1443,19 @@
             </div>
             <div class="pipeline-card">
                 <span class="pipe-tag">Vision</span>
+                <h3>Torch Compile</h3>
+                <p>Object detection with torch.compile for optimized steady-state throughput.</p>
+<pre>gst-launch-1.0 filesrc location=video.mp4 \
+  ! decodebin ! videoconvert ! videoscale \
+  ! video/x-raw,width=640,height=480 \
+  ! pyml_objectdetector \
+    model-name=fasterrcnn_resnet50_fpn \
+    device=cuda compile=True \
+  ! pyml_overlay ! videoconvert \
+  ! autovideosink</pre>
+            </div>
+            <div class="pipeline-card">
+                <span class="pipe-tag">Vision</span>
                 <h3>Pose Estimation</h3>
                 <p>YOLO pose with skeleton visualization on frame.</p>
 <pre>gst-launch-1.0 filesrc location=video.mp4 \

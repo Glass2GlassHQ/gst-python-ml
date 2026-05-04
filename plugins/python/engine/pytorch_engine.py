@@ -349,7 +349,9 @@ class PyTorchEngine(MLEngine):
 
         elif not self.tokenizer:
             self.model.eval()
-            if "resnet" in self.model.__class__.__name__.lower():
+            # torch.compile wraps the model in OptimizedModule; unwrap for name check
+            inner = getattr(self.model, "_orig_mod", self.model)
+            if "resnet" in inner.__class__.__name__.lower():
                 preds = self._forward_classification(frames)
                 preds = (
                     preds.cpu().numpy() if isinstance(preds, torch.Tensor) else preds

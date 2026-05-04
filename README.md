@@ -37,6 +37,7 @@ is >= 1.24.
 - [Custom Plugins](#custom-plugins)
 - [Pipelines](#pipelines)
   - [Classification](#classification)
+  - [Torch Compile](#torch-compile)
   - [Object Detection](#object-detection)
   - [Pose Estimation](#pose-estimation)
   - [Depth Estimation](#depth-estimation)
@@ -500,6 +501,31 @@ Below are some sample pipelines for the various elements in this project.
 
 ```
 GST_DEBUG=4 gst-launch-1.0  filesrc location=data/people.mp4 ! decodebin ! videoconvert ! videoscale ! video/x-raw,width=640,height=480 ! pyml_classifier model-name=resnet18 device=cuda !  videoconvert !  autovideosink
+```
+
+
+### Torch Compile
+
+Any PyTorch element supports `torch.compile` optimization via the `compile` property.
+This triggers PyTorch's JIT compiler to fuse operations and generate optimized kernels,
+improving steady-state throughput at the cost of a longer first-frame warm-up.
+
+#### Classification with torch.compile
+
+```
+GST_DEBUG=4 gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin ! videoconvert ! videoscale \
+  ! video/x-raw,width=640,height=480 \
+  ! pyml_classifier model-name=resnet18 device=cuda compile=True \
+  ! videoconvert ! autovideosink
+```
+
+#### Object detection with torch.compile
+
+```
+GST_DEBUG=4 gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin ! videoconvert ! videoscale \
+  ! video/x-raw,width=640,height=480 \
+  ! pyml_objectdetector model-name=fasterrcnn_resnet50_fpn device=cuda compile=True \
+  ! videoconvert ! pyml_overlay ! videoconvert ! autovideosink
 ```
 
 
