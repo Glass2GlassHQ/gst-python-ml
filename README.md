@@ -130,13 +130,6 @@ pip install gstreamer-python
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 ```
 
-> **Known issue:** The gst-python plugin loader on Windows may discover the plugin
-> directory but register 0 features, preventing `gst-launch-1.0` from finding
-> `pyml_*` elements. This is a known Windows-specific issue in gst-python — see
-> [#18](https://github.com/collabora/gst-python-ml/issues/18) for details and
-> workarounds. As a workaround, you can register plugins explicitly from a Python
-> script using `Gst.Element.register()`.
-
 #### Manage Python packages
 
 ##### Important: Python version must match GStreamer
