@@ -15,7 +15,11 @@
 pip install setuptools wheel twine
 pip install --upgrade build
 ```
-## Build and Upoad
+## Release
+
+1. rev version number in project.toml, commit and push
+
+2. build and upload
 
 ```
 python -m build
