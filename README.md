@@ -45,6 +45,7 @@ is >= 1.24.
   - [Voice Activity Detection](#voice-activity-detection)
   - [Transcription](#transcription)
   - [LLM](#llm)
+  - [Remote LLM (Ollama)](#remote-llm-ollama)
   - [Stable Diffusion](#stablediffusion)
   - [Kafka Sink](#kafkasink)
   - [Segment Anything (SAM)](#segment-anything-sam)
@@ -1008,6 +1009,41 @@ https://huggingface.co/models?sort=trending&search=Helsinki
 3. LLM pipeline (in this case, we use phi-2)
 
 `GST_DEBUG=4 gst-launch-1.0 filesrc location=data/prompt_for_llm.txt !  pyml_llm device=cuda model-name="microsoft/phi-2" ! fakesink`
+
+#### Remote LLM (Ollama)
+
+`pyml_llm_remote` sends text to a remote LLM endpoint via HTTP. Works with Ollama,
+OpenAI-compatible APIs, or any server that speaks the same protocol.
+
+##### Ollama (default endpoint)
+
+```
+GST_DEBUG=4 gst-launch-1.0 filesrc location=data/prompt_for_llm.txt \
+  ! "text/x-raw,format=utf8" \
+  ! pyml_llm_remote model-name=llama3 \
+  ! fakesink
+```
+
+##### Ollama with system prompt and custom model
+
+```
+GST_DEBUG=4 gst-launch-1.0 filesrc location=data/prompt_for_llm.txt \
+  ! "text/x-raw,format=utf8" \
+  ! pyml_llm_remote model-name=qwen3:8b \
+    system-prompt="You are a helpful assistant. Answer concisely." \
+    temperature=0.5 \
+  ! fakesink
+```
+
+##### OpenAI-compatible endpoint (e.g. Ollama with /v1 API)
+
+```
+GST_DEBUG=4 gst-launch-1.0 filesrc location=data/prompt_for_llm.txt \
+  ! "text/x-raw,format=utf8" \
+  ! pyml_llm_remote url=http://localhost:11434/v1/chat/completions \
+    model-name=llama3 \
+  ! fakesink
+```
 
 ### stablediffusion
 
