@@ -22,7 +22,7 @@ Supported functionality includes:
 1. serializing model metadata to Kafka server
 
 Different ML toolkits are supported via the `MLEngine` abstraction: PyTorch, ONNX Runtime, OpenVINO,
-LiteRT (TFLite), TensorFlow, Apache TVM, tinygrad, Apple MLX, Meta ExecuTorch, llama.cpp, HuggingFace Candle, and JAX/Flax.
+LiteRT (TFLite), TensorFlow, Apache TVM, tinygrad, Apple MLX, Meta ExecuTorch, llama.cpp, HuggingFace Candle, JAX/Flax, and AMD MiGraphX.
 All testing thus far has been done primarily with PyTorch.
 
 These elements will work with your distribution's GStreamer packages as long as the GStreamer version
@@ -284,6 +284,20 @@ For example, for torch 2.11 + CUDA 12.8 + Python 3.14:
 Pre-built wheels can be found here:
 https://github.com/mjun0812/flash-attention-prebuild-wheels/releases
 
+
+#### MiGraphX (AMD ROCm)
+
+MiGraphX is AMD's graph inference engine for optimized model execution on AMD GPUs (ROCm).
+
+Install MiGraphX (requires ROCm):
+```
+sudo apt install migraphx
+```
+
+Set the Python path so that the `migraphx` module is importable:
+```
+export PYTHONPATH=/opt/rocm/lib:$PYTHONPATH
+```
 
 #### Clone repo
 
@@ -806,6 +820,34 @@ gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
   d. ! queue ! videoconvert ! videoscale \
   ! "video/x-raw,format=RGB,width=224,height=224" \
   ! pyml_classifier model-name=resnet18 device=cpu engine-name=jax \
+  ! fakesink
+```
+
+#### MiGraphX Engine
+
+AMD MiGraphX graph inference engine for optimized execution on AMD GPUs via ROCm.
+Set `engine-name=migraphx` and point to an ONNX model file. Requires ROCm and
+`migraphx` Python module (see install section above).
+
+##### YOLO11m MiGraphX object detection with overlay
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_objectdetector engine-name=migraphx model-name=yolo11m.onnx device=gpu \
+              input-format=nchw post-process=anchor_free \
+  ! videoconvert ! "video/x-raw,format=RGBA" \
+  ! pyml_overlay ! videoconvert ! autovideosink
+```
+
+##### MiGraphX on CPU (reference target)
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_inference engine-name=migraphx model-name=yolo11m.onnx device=cpu \
   ! fakesink
 ```
 

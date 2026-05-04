@@ -41,6 +41,7 @@ class EngineFactory:
     LLAMACPP_ENGINE = "llamacpp"
     CANDLE_ENGINE = "candle"
     JAX_ENGINE = "jax"
+    MIGRAPHX_ENGINE = "migraphx"
 
     _builtins_registered: bool = False  # Class-level flag for singleton-like lazy init
 
@@ -127,6 +128,13 @@ class EngineFactory:
             from .jax_engine import JAXEngine
 
             _try_register(cls.JAX_ENGINE, JAXEngine)
+        except ImportError:
+            pass
+
+        try:
+            from .migraphx_engine import MiGraphXEngine
+
+            _try_register(cls.MIGRAPHX_ENGINE, MiGraphXEngine)
         except ImportError:
             pass
 
