@@ -42,6 +42,8 @@ class EngineFactory:
     CANDLE_ENGINE = "candle"
     JAX_ENGINE = "jax"
     MIGRAPHX_ENGINE = "migraphx"
+    IREE_ENGINE = "iree"
+    NCNN_ENGINE = "ncnn"
 
     _builtins_registered: bool = False  # Class-level flag for singleton-like lazy init
 
@@ -135,6 +137,20 @@ class EngineFactory:
             from .migraphx_engine import MiGraphXEngine
 
             _try_register(cls.MIGRAPHX_ENGINE, MiGraphXEngine)
+        except ImportError:
+            pass
+
+        try:
+            from .iree_engine import IREEEngine
+
+            _try_register(cls.IREE_ENGINE, IREEEngine)
+        except ImportError:
+            pass
+
+        try:
+            from .ncnn_engine import NCNNEngine
+
+            _try_register(cls.NCNN_ENGINE, NCNNEngine)
         except ImportError:
             pass
 

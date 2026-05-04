@@ -182,6 +182,54 @@ class ONNXEngine(MLEngine):
                     self.logger.warning("Falling back to CPU")
                     self.device = "cpu"
                     self.provider = "CPUExecutionProvider"
+        elif "rocm" in device or "hip" in device:
+            available = ort.get_available_providers()
+            if "MIGraphXExecutionProvider" in available:
+                try:
+                    index = int(device.split(":")[-1]) if ":" in device else 0
+                    self.provider = (
+                        "MIGraphXExecutionProvider",
+                        {"device_id": index},
+                    )
+                    self.logger.info(
+                        f"AMD GPU device set via MIGraphXExecutionProvider (device:{index})"
+                    )
+                except Exception as e:
+                    self.logger.error(f"Failed to set MIGraphX provider: {e}")
+                    self.device = "cpu"
+                    self.provider = "CPUExecutionProvider"
+            elif "ROCMExecutionProvider" in available:
+                try:
+                    index = int(device.split(":")[-1]) if ":" in device else 0
+                    self.provider = (
+                        "ROCMExecutionProvider",
+                        {"device_id": index},
+                    )
+                    self.logger.info(
+                        f"AMD GPU device set via ROCMExecutionProvider (device:{index})"
+                    )
+                except Exception as e:
+                    self.logger.error(f"Failed to set ROCm provider: {e}")
+                    self.device = "cpu"
+                    self.provider = "CPUExecutionProvider"
+            else:
+                self.logger.warning(
+                    "No AMD GPU provider available (MIGraphX/ROCm), falling back to CPU"
+                )
+                self.device = "cpu"
+                self.provider = "CPUExecutionProvider"
+        elif "npu" in device or "ryzenai" in device:
+            available = ort.get_available_providers()
+            if "VitisAIExecutionProvider" in available:
+                self.provider = "VitisAIExecutionProvider"
+                self.logger.info("AMD Ryzen AI NPU set via VitisAIExecutionProvider")
+            else:
+                self.logger.warning(
+                    "VitisAIExecutionProvider not available, falling back to CPU. "
+                    "Install the Ryzen AI SDK: https://ryzenai.docs.amd.com/"
+                )
+                self.device = "cpu"
+                self.provider = "CPUExecutionProvider"
         elif device == "cpu":
             self.provider = "CPUExecutionProvider"
         else:

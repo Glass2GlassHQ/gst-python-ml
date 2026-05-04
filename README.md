@@ -22,7 +22,7 @@ Supported functionality includes:
 1. serializing model metadata to Kafka server
 
 Different ML toolkits are supported via the `MLEngine` abstraction: PyTorch, ONNX Runtime, OpenVINO,
-LiteRT (TFLite), TensorFlow, Apache TVM, tinygrad, Apple MLX, Meta ExecuTorch, llama.cpp, HuggingFace Candle, JAX/Flax, and AMD MiGraphX.
+LiteRT (TFLite), TensorFlow, Apache TVM, tinygrad, Apple MLX, Meta ExecuTorch, llama.cpp, HuggingFace Candle, JAX/Flax, AMD MiGraphX, IREE, and NCNN (Vulkan).
 All testing thus far has been done primarily with PyTorch.
 
 These elements will work with your distribution's GStreamer packages as long as the GStreamer version
@@ -298,6 +298,55 @@ Set the Python path so that the `migraphx` module is importable:
 ```
 export PYTHONPATH=/opt/rocm/lib:$PYTHONPATH
 ```
+
+#### IREE
+
+IREE is a compiler-based ML runtime (backed by AMD/Google) supporting ROCm, Vulkan, CUDA, and CPU.
+
+```
+pip install iree-base-compiler[onnx] iree-base-runtime
+```
+
+#### NCNN (Vulkan)
+
+NCNN is a lightweight inference framework with Vulkan GPU support for AMD/NVIDIA/Intel GPUs
+(no ROCm or CUDA required).
+
+```
+pip install ncnn
+```
+
+Convert ONNX models to NCNN format:
+```
+pip install onnx-simplifier
+python -m onnxsim model.onnx model_sim.onnx
+# Use ncnn's onnx2ncnn tool:
+onnx2ncnn model_sim.onnx model.param model.bin
+```
+
+#### AMD Ryzen AI (NPU)
+
+For AMD Ryzen AI laptops (7040/8040/Strix Point) with on-chip NPU, use the ONNX engine
+with `device=npu`. Requires the [Ryzen AI SDK](https://ryzenai.docs.amd.com/):
+
+```
+# Install Ryzen AI SDK (provides VitisAIExecutionProvider for ONNX Runtime)
+# See: https://ryzenai.docs.amd.com/en/latest/inst.html
+```
+
+#### AMD ZenDNN (CPU Optimization)
+
+ZenDNN optimizes inference on AMD EPYC/Zen CPUs. It works as a backend for existing
+frameworks (ONNX Runtime, TensorFlow) — no separate engine needed. Set environment
+variables to enable:
+
+```
+export ZENDNN_INT8_SUPPORT=1
+export OMP_NUM_THREADS=$(nproc)
+# Then use engine-name=onnx or engine-name=tensorflow as usual
+```
+
+See: https://www.amd.com/en/developer/zendnn.html
 
 #### Clone repo
 
@@ -849,6 +898,126 @@ gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
   ! "video/x-raw,format=RGB,width=640,height=640" \
   ! pyml_inference engine-name=migraphx model-name=yolo11m.onnx device=cpu \
   ! fakesink
+```
+
+#### IREE Engine
+
+IREE (Intermediate Representation Execution Environment) is a compiler-based ML runtime
+backed by AMD and Google. Supports ROCm (AMD GPU), Vulkan, CUDA, and CPU targets.
+Set `engine-name=iree` and point to a pre-compiled `.vmfb` or an `.onnx` model
+(auto-compiled at load time).
+
+##### IREE on AMD GPU (ROCm/HIP)
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_inference engine-name=iree model-name=yolo11m.onnx device=hip \
+  ! fakesink
+```
+
+##### IREE on Vulkan (any GPU vendor)
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_inference engine-name=iree model-name=yolo11m.onnx device=vulkan \
+  ! fakesink
+```
+
+##### IREE with pre-compiled module
+
+```
+# Pre-compile: iree-compile model.mlir --iree-hal-target-device=hip -o model.vmfb
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_inference engine-name=iree model-name=model.vmfb device=hip \
+  ! fakesink
+```
+
+#### NCNN Engine (Vulkan)
+
+NCNN is a lightweight inference framework with Vulkan GPU acceleration.
+Works on AMD, NVIDIA, and Intel GPUs without requiring ROCm or CUDA.
+Set `engine-name=ncnn` and point to an NCNN `.param` file (`.bin` must be alongside).
+
+##### NCNN on Vulkan GPU
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_inference engine-name=ncnn model-name=yolo11m.param device=vulkan \
+  ! fakesink
+```
+
+##### NCNN on CPU
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_inference engine-name=ncnn model-name=yolo11m.param device=cpu \
+  ! fakesink
+```
+
+#### ONNX Runtime on AMD GPUs (ROCm)
+
+The ONNX engine supports AMD GPUs via ROCm execution providers. Set `device=rocm`
+to use MIGraphXExecutionProvider (preferred) or ROCMExecutionProvider as fallback.
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_objectdetector engine-name=onnx model-name=yolo11m.onnx device=rocm \
+              input-format=nchw post-process=anchor_free \
+  ! videoconvert ! "video/x-raw,format=RGBA" \
+  ! pyml_overlay ! videoconvert ! autovideosink
+```
+
+#### ONNX Runtime on AMD Ryzen AI NPU
+
+For AMD Ryzen AI laptops with on-chip NPU, set `device=npu`:
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_objectdetector engine-name=onnx model-name=yolo11m.onnx device=npu \
+              input-format=nchw post-process=anchor_free \
+  ! videoconvert ! "video/x-raw,format=RGBA" \
+  ! pyml_overlay ! videoconvert ! autovideosink
+```
+
+#### PyTorch on AMD GPUs (ROCm)
+
+The PyTorch engine supports AMD GPUs natively when PyTorch is installed with ROCm.
+Use `device=cuda` (PyTorch uses the CUDA API mapping for ROCm):
+
+```
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.3
+```
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_objectdetector model-name=fasterrcnn_resnet50_fpn device=cuda \
+  ! videoconvert ! pyml_overlay ! videoconvert ! autovideosink
+```
+
+With `torch.compile` and Triton for AMD GPU kernel optimization:
+
+```
+gst-launch-1.0 filesrc location=data/people.mp4 ! decodebin name=d \
+  d. ! queue ! videoconvert ! videoscale \
+  ! "video/x-raw,format=RGB,width=640,height=640" \
+  ! pyml_objectdetector model-name=fasterrcnn_resnet50_fpn device=cuda compile=True \
+  ! videoconvert ! pyml_overlay ! videoconvert ! autovideosink
 ```
 
 ### Pose Estimation

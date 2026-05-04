@@ -938,7 +938,7 @@
 
         <div class="stats-row" style="grid-template-columns: repeat(3, 1fr);">
             <div class="stat-cell">
-                <h3>13</h3>
+                <h3>15</h3>
                 <p>ML Engines</p>
             </div>
             <div class="stat-cell">
@@ -1036,6 +1036,16 @@
                 <div class="engine-icon">&#128308;</div>
                 <h3>AMD MiGraphX</h3>
                 <p>AMD&rsquo;s graph inference engine for ROCm GPUs. Set <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; color: var(--green);">engine-name=migraphx</code> and point to an <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; color: var(--green);">.onnx</code> model. Optimized compilation with fp16 quantization support.</p>
+            </div>
+            <div class="engine-card">
+                <div class="engine-icon">&#9881;</div>
+                <h3>IREE</h3>
+                <p>Compiler-based ML runtime (AMD/Google). Set <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; color: var(--green);">engine-name=iree</code> for optimized inference on ROCm, Vulkan, CUDA, or CPU via ahead-of-time compilation.</p>
+            </div>
+            <div class="engine-card">
+                <div class="engine-icon">&#128302;</div>
+                <h3>NCNN (Vulkan)</h3>
+                <p>Lightweight inference with Vulkan GPU support. Set <code style="background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; font-family: 'JetBrains Mono', monospace; color: var(--green);">engine-name=ncnn</code> for GPU inference on AMD, NVIDIA, or Intel &mdash; no ROCm or CUDA required.</p>
             </div>
         </div>
     </div>
