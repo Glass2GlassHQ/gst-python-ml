@@ -20,21 +20,17 @@ from log.global_logger import GlobalLogger
 
 CAN_REGISTER_ELEMENT = True
 try:
-    import ctypes
-    import json
-
     import gi
 
     gi.require_version("Gst", "1.0")
-    gi.require_version("GstBase", "1.0")
-    gi.require_version("GstVideo", "1.0")
-    from gi.repository import Gst, GObject
+    from gi.repository import Gst  # noqa: E402  (registration only)
 
     from video_transform import VideoTransform
     from utils.format_converter import FormatConverter
-    from utils.muxed_buffer_processor import MuxedBufferProcessor
     from engine.sam_engine import SamEngine
     from engine.engine_factory import EngineFactory
+    from backend import frameio, FlowReturn, GObject
+    from tasks.sam import SamTask
 
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
@@ -43,22 +39,8 @@ except ImportError as e:
 # Header prefix for segmentation mask buffer metadata
 SAM_META_HEADER = b"GST-SAM:"
 
-# Mask overlay colors (BGR) cycled across detected objects
-MASK_COLORS = [
-    (255, 0, 0),
-    (0, 255, 0),
-    (0, 0, 255),
-    (255, 255, 0),
-    (0, 255, 255),
-    (255, 0, 255),
-    (128, 0, 255),
-    (255, 128, 0),
-    (0, 128, 255),
-    (128, 255, 0),
-]
 
-
-class SamTransform(VideoTransform):
+class SamTransform(VideoTransform, SamTask):
     """
     GStreamer element for image segmentation using Segment Anything Model 2.
 
@@ -120,102 +102,35 @@ class SamTransform(VideoTransform):
 
     def do_transform_ip(self, buf):
         try:
-            processor = MuxedBufferProcessor(
-                self.logger, self.width, self.height, 30, 1
+            frames, num_sources, fmt = frameio.read_frames(
+                buf, self.sinkpad, self.width, self.height
             )
-            frames, _, num_sources, fmt = processor.extract_frames(buf, self.sinkpad)
             if frames is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
-            result = self._do_forward(frames)
+            result = self.forward(frames)
             if result is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
             if num_sources == 1:
-                self._apply_masks(buf, result, fmt, frames)
+                output, blob = self.decode(frames, result, fmt)
             else:
                 if isinstance(result, list) and len(result) > 0:
-                    self._apply_masks(
-                        buf, result[0], fmt, frames[0] if frames.ndim == 4 else frames
+                    output, blob = self.decode(
+                        frames[0] if frames.ndim == 4 else frames, result[0], fmt
                     )
+                else:
+                    output, blob = None, None
 
-            return Gst.FlowReturn.OK
+            if output is not None:
+                frameio.write_frame(buf, output)
+            if blob is not None:
+                frameio.append_blob(buf, SAM_META_HEADER, blob)
+            return FlowReturn.OK
 
         except Exception as e:
             self.logger.error(f"SAM transform error: {e}")
-            return Gst.FlowReturn.ERROR
-
-    def _do_forward(self, frames):
-        if self.engine:
-            return self.engine.do_forward(frames, max_masks=self.max_masks)
-        return None
-
-    def _apply_masks(self, buf, result, fmt, frame):
-        """Overlay masks on frame and append mask metadata."""
-        import cv2
-        import numpy as np
-
-        raw_masks = result.get("raw_masks")
-        mask_info = result.get("masks", [])
-
-        # Draw mask overlays before appending read-only metadata memory
-        if self.visualize and raw_masks is not None:
-            overlay = frame.copy()
-            for j in range(min(raw_masks.shape[0], self.max_masks)):
-                best_idx = 0
-                if raw_masks.ndim == 4 and raw_masks.shape[1] > 1:
-                    best_idx = raw_masks[j].sum(axis=(1, 2)).argmax()
-                mask = raw_masks[j, best_idx]
-                color = MASK_COLORS[j % len(MASK_COLORS)]
-                colored = np.zeros_like(overlay)
-                colored[:] = color
-                mask_bool = mask > 0.5
-                overlay[mask_bool] = cv2.addWeighted(
-                    overlay[mask_bool], 0.5, colored[mask_bool], 0.5, 0
-                )
-
-            output = self._convert_rgb_to_format(overlay, fmt)
-            if output is not None:
-                success, map_info = buf.map(Gst.MapFlags.WRITE)
-                if success:
-                    try:
-                        frame_bytes = np.ascontiguousarray(output).tobytes()
-                        dst = (ctypes.c_char * map_info.size).from_buffer(map_info.data)
-                        ctypes.memmove(
-                            dst, frame_bytes, min(len(frame_bytes), map_info.size)
-                        )
-                    finally:
-                        buf.unmap(map_info)
-
-        # Append mask metadata as a custom buffer memory chunk
-        if mask_info:
-            meta_bytes = SAM_META_HEADER + json.dumps(mask_info).encode("utf-8")
-            tmp = Gst.Buffer.new_allocate(None, len(meta_bytes), None)
-            tmp.fill(0, meta_bytes)
-            buf.append_memory(tmp.get_memory(0))
-
-    @staticmethod
-    def _convert_rgb_to_format(rgb, fmt):
-        """Convert an RGB numpy array to the target GStreamer video format."""
-        import cv2
-        import numpy as np
-
-        if fmt == "RGB":
-            return rgb
-        elif fmt == "BGR":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        elif fmt == "RGBA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-        elif fmt == "BGRA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-        elif fmt == "ARGB":
-            rgba = cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-            return np.roll(rgba, 1, axis=-1)
-        elif fmt == "ABGR":
-            bgra = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-            return np.roll(bgra, 1, axis=-1)
-        else:
-            return rgb
+            return FlowReturn.ERROR
 
 
 if CAN_REGISTER_ELEMENT:

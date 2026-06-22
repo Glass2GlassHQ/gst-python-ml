@@ -22,9 +22,13 @@ from backend.gst.transform import BaseTransform  # noqa: E402
 from backend.gst.aggregator import BaseAggregator  # noqa: E402
 from backend.gst.video_transform import VideoTransform  # noqa: E402
 from backend.gst.analytics import GstAnalyticsBackend  # noqa: E402
+from backend.gst.frameio import GstFrameIO  # noqa: E402
 
 #: The analytics metadata implementation for this backend.
 analytics = GstAnalyticsBackend()
+
+#: The frame buffer I/O implementation for this backend.
+frameio = GstFrameIO()
 
 # Framework primitives exposed to leaf elements so their task code imports them
 # from the backend rather than touching `gi` directly. `FlowReturn` is the
@@ -36,6 +40,7 @@ __all__ = [
     "BaseAggregator",
     "VideoTransform",
     "analytics",
+    "frameio",
     "FlowReturn",
     "GObject",
 ]

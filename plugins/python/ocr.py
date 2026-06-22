@@ -20,21 +20,17 @@ from log.global_logger import GlobalLogger
 
 CAN_REGISTER_ELEMENT = True
 try:
-    import ctypes
-    import json
-
     import gi
 
     gi.require_version("Gst", "1.0")
-    gi.require_version("GstBase", "1.0")
-    gi.require_version("GstVideo", "1.0")
-    from gi.repository import Gst, GObject
+    from gi.repository import Gst  # noqa: E402  (registration only)
 
     from video_transform import VideoTransform
     from utils.format_converter import FormatConverter
-    from utils.muxed_buffer_processor import MuxedBufferProcessor
     from engine.ocr_engine import OcrEngine
     from engine.engine_factory import EngineFactory
+    from backend import frameio, FlowReturn, GObject
+    from tasks.ocr import OcrTask
 
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
@@ -44,7 +40,7 @@ except ImportError as e:
 OCR_META_HEADER = b"GST-OCR:"
 
 
-class OCRTransform(VideoTransform):
+class OCRTransform(VideoTransform, OcrTask):
     """
     GStreamer element for optical character recognition on video frames.
 
@@ -96,104 +92,35 @@ class OCRTransform(VideoTransform):
 
     def do_transform_ip(self, buf):
         try:
-            processor = MuxedBufferProcessor(
-                self.logger, self.width, self.height, 30, 1
+            frames, num_sources, fmt = frameio.read_frames(
+                buf, self.sinkpad, self.width, self.height
             )
-            frames, _, num_sources, fmt = processor.extract_frames(buf, self.sinkpad)
             if frames is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
-            result = self._do_forward(frames)
+            result = self.forward(frames)
             if result is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
             if num_sources == 1:
-                self._apply_ocr(buf, result, fmt, frames)
+                output, blob = self.decode(frames, result, fmt)
             else:
                 if isinstance(result, list) and len(result) > 0:
-                    self._apply_ocr(
-                        buf, result[0], fmt, frames[0] if frames.ndim == 4 else frames
+                    output, blob = self.decode(
+                        frames[0] if frames.ndim == 4 else frames, result[0], fmt
                     )
+                else:
+                    output, blob = None, None
 
-            return Gst.FlowReturn.OK
+            if output is not None:
+                frameio.write_frame(buf, output)
+            if blob is not None:
+                frameio.append_blob(buf, OCR_META_HEADER, blob)
+            return FlowReturn.OK
 
         except Exception as e:
             self.logger.error(f"OCR transform error: {e}")
-            return Gst.FlowReturn.ERROR
-
-    def _do_forward(self, frames):
-        if self.engine:
-            return self.engine.do_forward(frames)
-        return None
-
-    def _apply_ocr(self, buf, result, fmt, frame):
-        """Draw recognized text on frame and append OCR metadata."""
-        import cv2
-        import numpy as np
-
-        regions = result.get("regions", [])
-
-        # Draw text overlays before appending read-only metadata memory
-        if self.draw_text and regions:
-            overlay = frame.copy()
-            for region in regions:
-                x, y, w, h = region["x"], region["y"], region["w"], region["h"]
-                text = region["text"]
-                cv2.rectangle(overlay, (x, y), (x + w, y + h), (0, 255, 0), 2)
-                font_scale = max(0.4, min(w / 300.0, 1.0))
-                cv2.putText(
-                    overlay,
-                    text,
-                    (x + 4, y + h - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    font_scale,
-                    (0, 255, 0),
-                    1,
-                    cv2.LINE_AA,
-                )
-
-            output = self._convert_rgb_to_format(overlay, fmt)
-            if output is not None:
-                success, map_info = buf.map(Gst.MapFlags.WRITE)
-                if success:
-                    try:
-                        frame_bytes = np.ascontiguousarray(output).tobytes()
-                        dst = (ctypes.c_char * map_info.size).from_buffer(map_info.data)
-                        ctypes.memmove(
-                            dst, frame_bytes, min(len(frame_bytes), map_info.size)
-                        )
-                    finally:
-                        buf.unmap(map_info)
-
-        # Append OCR results as a custom buffer memory chunk
-        if regions:
-            meta_bytes = OCR_META_HEADER + json.dumps(regions).encode("utf-8")
-            tmp = Gst.Buffer.new_allocate(None, len(meta_bytes), None)
-            tmp.fill(0, meta_bytes)
-            buf.append_memory(tmp.get_memory(0))
-
-    @staticmethod
-    def _convert_rgb_to_format(rgb, fmt):
-        """Convert an RGB numpy array to the target GStreamer video format."""
-        import cv2
-        import numpy as np
-
-        if fmt == "RGB":
-            return rgb
-        elif fmt == "BGR":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        elif fmt == "RGBA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-        elif fmt == "BGRA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-        elif fmt == "ARGB":
-            rgba = cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-            return np.roll(rgba, 1, axis=-1)
-        elif fmt == "ABGR":
-            bgra = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-            return np.roll(bgra, 1, axis=-1)
-        else:
-            return rgb
+            return FlowReturn.ERROR
 
 
 if CAN_REGISTER_ELEMENT:

@@ -20,20 +20,17 @@ from log.global_logger import GlobalLogger
 
 CAN_REGISTER_ELEMENT = True
 try:
-    import ctypes
-
     import gi
 
     gi.require_version("Gst", "1.0")
-    gi.require_version("GstBase", "1.0")
-    gi.require_version("GstVideo", "1.0")
-    from gi.repository import Gst, GObject
+    from gi.repository import Gst  # noqa: E402  (registration only)
 
     from video_transform import VideoTransform
     from utils.format_converter import FormatConverter
-    from utils.muxed_buffer_processor import MuxedBufferProcessor
     from engine.optical_flow_engine import OpticalFlowEngine
     from engine.engine_factory import EngineFactory
+    from backend import frameio, FlowReturn, GObject
+    from tasks.optical_flow import OpticalFlowTask
 
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
@@ -50,7 +47,7 @@ FLOW_COLORMAPS = {
 }
 
 
-class OpticalFlowTransform(VideoTransform):
+class OpticalFlowTransform(VideoTransform, OpticalFlowTask):
     """
     GStreamer element for dense optical flow estimation using RAFT.
 
@@ -102,99 +99,36 @@ class OpticalFlowTransform(VideoTransform):
 
     def do_transform_ip(self, buf):
         try:
-            processor = MuxedBufferProcessor(
-                self.logger, self.width, self.height, 30, 1
+            frames, _num_sources, fmt = frameio.read_frames(
+                buf, self.sinkpad, self.width, self.height
             )
-            frames, _, num_sources, fmt = processor.extract_frames(buf, self.sinkpad)
             if frames is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
             frame = frames[0] if frames.ndim == 4 else frames
 
+            # Temporal pairing stays in the shell: hold the previous frame.
             if self._prev_frame is None:
                 self._prev_frame = frame.copy()
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
-            flow = self._do_forward(self._prev_frame, frame)
+            flow = self.forward(self._prev_frame, frame)
             self._prev_frame = frame.copy()
 
             if flow is None:
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
             if self.visualize:
-                self._apply_flow_vis(buf, flow, frame, fmt)
+                # Portable task: render the flow overlay frame.
+                output, _blob = self.decode(flow, frame, fmt)
+                if output is not None:
+                    frameio.write_frame(buf, output)
 
-            return Gst.FlowReturn.OK
+            return FlowReturn.OK
 
         except Exception as e:
             self.logger.error(f"Optical flow transform error: {e}")
-            return Gst.FlowReturn.ERROR
-
-    def _do_forward(self, prev_frame, curr_frame):
-        if self.engine:
-            return self.engine.do_forward(prev_frame, curr_frame)
-        return None
-
-    def _apply_flow_vis(self, buf, flow, frame, fmt):
-        """Render flow as a color overlay and write back to buffer."""
-        import cv2
-        import numpy as np
-
-        flow_vis = self._flow_to_color(flow)
-        blended = cv2.addWeighted(frame, 0.5, flow_vis, 0.5, 0)
-        output = self._convert_rgb_to_format(blended, fmt)
-        if output is not None:
-            success, map_info = buf.map(Gst.MapFlags.WRITE)
-            if success:
-                try:
-                    frame_bytes = np.ascontiguousarray(output).tobytes()
-                    dst = (ctypes.c_char * map_info.size).from_buffer(map_info.data)
-                    ctypes.memmove(
-                        dst, frame_bytes, min(len(frame_bytes), map_info.size)
-                    )
-                finally:
-                    buf.unmap(map_info)
-
-    @staticmethod
-    def _flow_to_color(flow):
-        """Convert optical flow (H, W, 2) to an RGB color image using HSV encoding."""
-        import cv2
-        import numpy as np
-
-        fx, fy = flow[..., 0], flow[..., 1]
-        mag = np.sqrt(fx**2 + fy**2)
-        ang = np.arctan2(fy, fx)
-
-        hsv = np.zeros((*flow.shape[:2], 3), dtype=np.uint8)
-        hsv[..., 0] = ((ang + np.pi) / (2 * np.pi) * 179).astype(np.uint8)
-        hsv[..., 1] = 255
-        mag_norm = mag / (mag.max() + 1e-8)
-        hsv[..., 2] = (mag_norm * 255).astype(np.uint8)
-
-        return cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
-
-    @staticmethod
-    def _convert_rgb_to_format(rgb, fmt):
-        """Convert an RGB numpy array to the target GStreamer video format."""
-        import cv2
-        import numpy as np
-
-        if fmt == "RGB":
-            return rgb
-        elif fmt == "BGR":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        elif fmt == "RGBA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-        elif fmt == "BGRA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-        elif fmt == "ARGB":
-            rgba = cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-            return np.roll(rgba, 1, axis=-1)
-        elif fmt == "ABGR":
-            bgra = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-            return np.roll(bgra, 1, axis=-1)
-        else:
-            return rgb
+            return FlowReturn.ERROR
 
 
 if CAN_REGISTER_ELEMENT:

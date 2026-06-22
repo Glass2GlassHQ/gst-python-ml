@@ -20,22 +20,19 @@ from log.global_logger import GlobalLogger
 
 CAN_REGISTER_ELEMENT = True
 try:
-    import ctypes
-    import json
     from collections import deque
 
     import gi
 
     gi.require_version("Gst", "1.0")
-    gi.require_version("GstBase", "1.0")
-    gi.require_version("GstVideo", "1.0")
-    from gi.repository import Gst, GObject
+    from gi.repository import Gst  # noqa: E402  (registration only)
 
     from video_transform import VideoTransform
     from utils.format_converter import FormatConverter
-    from utils.muxed_buffer_processor import MuxedBufferProcessor
     from engine.action_engine import ActionEngine
     from engine.engine_factory import EngineFactory
+    from backend import frameio, FlowReturn, GObject
+    from tasks.action import ActionTask
 
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
@@ -45,7 +42,7 @@ except ImportError as e:
 ACTION_META_HEADER = b"GST-ACTION:"
 
 
-class ActionTransform(VideoTransform):
+class ActionTransform(VideoTransform, ActionTask):
     """
     GStreamer element for video action/activity recognition using VideoMAE.
 
@@ -101,15 +98,15 @@ class ActionTransform(VideoTransform):
 
     def do_transform_ip(self, buf):
         try:
-            processor = MuxedBufferProcessor(
-                self.logger, self.width, self.height, 30, 1
+            frames, _num_sources, fmt = frameio.read_frames(
+                buf, self.sinkpad, self.width, self.height
             )
-            frames, _, num_sources, fmt = processor.extract_frames(buf, self.sinkpad)
             if frames is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
             frame = frames[0] if frames.ndim == 4 else frames
 
+            # Temporal accumulation stays in the shell: maintain the frame window.
             # Update deque maxlen if property changed
             if self._frame_buffer.maxlen != self.num_frames:
                 self._frame_buffer = deque(self._frame_buffer, maxlen=self.num_frames)
@@ -118,91 +115,24 @@ class ActionTransform(VideoTransform):
 
             # Run classification when buffer is full
             if len(self._frame_buffer) == self.num_frames:
-                result = self._do_forward(list(self._frame_buffer))
+                result = self.forward(list(self._frame_buffer))
                 if result is not None:
                     self._last_result = result
 
             # Draw label and attach metadata using the latest result
             if self._last_result is not None:
-                self._apply_action(buf, self._last_result, fmt, frame)
+                # Portable task: produce the optional overlay frame and metadata.
+                output, blob = self.decode(self._last_result, fmt, frame)
+                if output is not None:
+                    frameio.write_frame(buf, output)
+                if blob is not None:
+                    frameio.append_blob(buf, ACTION_META_HEADER, blob)
 
-            return Gst.FlowReturn.OK
+            return FlowReturn.OK
 
         except Exception as e:
             self.logger.error(f"Action recognition transform error: {e}")
-            return Gst.FlowReturn.ERROR
-
-    def _do_forward(self, frame_buffer):
-        if self.engine:
-            return self.engine.do_forward(frame_buffer)
-        return None
-
-    def _apply_action(self, buf, result, fmt, frame):
-        """Draw action label on frame and append action metadata."""
-        import cv2
-        import numpy as np
-
-        label = result.get("label", "")
-        score = result.get("score", 0.0)
-
-        # Draw label before appending read-only metadata memory
-        if self.draw_label and label:
-            overlay = frame.copy()
-            text = f"{label} ({score:.2f})"
-            (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 1.0, 2)
-            cv2.rectangle(overlay, (8, 8), (16 + tw, 16 + th + 8), (0, 0, 0), -1)
-            cv2.putText(
-                overlay,
-                text,
-                (12, 12 + th),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1.0,
-                (0, 255, 0),
-                2,
-                cv2.LINE_AA,
-            )
-
-            output = self._convert_rgb_to_format(overlay, fmt)
-            if output is not None:
-                success, map_info = buf.map(Gst.MapFlags.WRITE)
-                if success:
-                    try:
-                        frame_bytes = np.ascontiguousarray(output).tobytes()
-                        dst = (ctypes.c_char * map_info.size).from_buffer(map_info.data)
-                        ctypes.memmove(
-                            dst, frame_bytes, min(len(frame_bytes), map_info.size)
-                        )
-                    finally:
-                        buf.unmap(map_info)
-
-        # Append action metadata as a custom buffer memory chunk
-        meta_bytes = ACTION_META_HEADER + json.dumps(result).encode("utf-8")
-        tmp = Gst.Buffer.new_allocate(None, len(meta_bytes), None)
-        tmp.fill(0, meta_bytes)
-        buf.append_memory(tmp.get_memory(0))
-
-    @staticmethod
-    def _convert_rgb_to_format(rgb, fmt):
-        """Convert an RGB numpy array to the target GStreamer video format."""
-        import cv2
-        import numpy as np
-
-        if fmt == "RGB":
-            return rgb
-        elif fmt == "BGR":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        elif fmt == "RGBA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-        elif fmt == "BGRA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-        elif fmt == "ARGB":
-            rgba = cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-            return np.roll(rgba, 1, axis=-1)
-        elif fmt == "ABGR":
-            bgra = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-            return np.roll(bgra, 1, axis=-1)
-        else:
-            return rgb
+            return FlowReturn.ERROR
 
 
 if CAN_REGISTER_ELEMENT:

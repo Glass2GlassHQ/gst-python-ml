@@ -20,19 +20,16 @@ from log.global_logger import GlobalLogger
 
 CAN_REGISTER_ELEMENT = True
 try:
-    import json
-
     import gi
 
     gi.require_version("Gst", "1.0")
-    gi.require_version("GstBase", "1.0")
-    gi.require_version("GstVideo", "1.0")
-    from gi.repository import Gst, GObject
+    from gi.repository import Gst  # noqa: E402  (registration only)
 
     from video_transform import VideoTransform
-    from utils.format_converter import FormatConverter
     from engine.vlm_engine import VlmEngine
     from engine.engine_factory import EngineFactory
+    from backend import frameio, FlowReturn, GObject
+    from tasks.vlm import VlmTask
 
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
@@ -42,7 +39,7 @@ except ImportError as e:
 VLM_META_HEADER = b"GST-VLM:"
 
 
-class VlmTransform(VideoTransform):
+class VlmTransform(VideoTransform, VlmTask):
     """
     GStreamer element for Vision-Language Model inference on video frames.
 
@@ -108,7 +105,6 @@ class VlmTransform(VideoTransform):
         super().__init__()
         self.mgr.engine_name = "pyml_vlm_engine"
         EngineFactory.register(self.mgr.engine_name, VlmEngine)
-        self.format_converter = FormatConverter()
         self._frame_count = 0
 
     @GObject.Property(type=str)
@@ -124,46 +120,24 @@ class VlmTransform(VideoTransform):
         try:
             self._frame_count += 1
             if self.frame_stride > 1 and (self._frame_count % self.frame_stride) != 1:
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
             if self.engine is None:
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
-            success, map_info = buf.map(Gst.MapFlags.READ)
-            if not success:
-                self.logger.error("Failed to map video buffer for reading")
-                return Gst.FlowReturn.ERROR
-
-            try:
-                frame = self.format_converter.to_rgb(
-                    map_info.data, self.width, self.height, buf, self.sinkpad
-                )
-            finally:
-                buf.unmap(map_info)
-
+            frame = frameio.read_frame(buf, self.sinkpad, self.width, self.height)
             if frame is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
-            text = self.engine.do_forward(
-                frame,
-                prompt=self.prompt,
-                system_prompt=self.system_prompt,
-                max_tokens=self.max_tokens,
-                temperature=self.temperature,
-            )
+            text = self.forward(frame)
 
             if text is None:
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
-            result = {"text": text}
+            # Portable task: serialize the VLM response payload.
+            _, payload = self.decode(text)
             # Append VLM response as a JSON memory chunk.
-            # Use new_allocate+fill: PyGI hides the maxsize arg in new_wrapped
-            # (it derives it from data length), so passing it explicitly shifts
-            # all subsequent args and causes a GI assertion crash.
-            meta_bytes = VLM_META_HEADER + json.dumps(result).encode("utf-8")
-            tmp = Gst.Buffer.new_allocate(None, len(meta_bytes), None)
-            tmp.fill(0, meta_bytes)
-            buf.append_memory(tmp.get_memory(0))
+            frameio.append_blob(buf, VLM_META_HEADER, payload)
 
             self.logger.debug(
                 f"VLM response ({len(text)} chars): {text[:80]}..."
@@ -171,11 +145,11 @@ class VlmTransform(VideoTransform):
                 else f"VLM response: {text}"
             )
 
-            return Gst.FlowReturn.OK
+            return FlowReturn.OK
 
         except Exception as e:
             self.logger.error(f"VLM transform error: {e}")
-            return Gst.FlowReturn.ERROR
+            return FlowReturn.ERROR
 
 
 if CAN_REGISTER_ELEMENT:

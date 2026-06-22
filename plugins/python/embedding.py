@@ -20,20 +20,16 @@ from log.global_logger import GlobalLogger
 
 CAN_REGISTER_ELEMENT = True
 try:
-    import json
-    import struct
-
     import gi
 
     gi.require_version("Gst", "1.0")
-    gi.require_version("GstBase", "1.0")
-    gi.require_version("GstVideo", "1.0")
-    from gi.repository import Gst, GObject
+    from gi.repository import Gst  # noqa: E402  (registration only)
 
     from video_transform import VideoTransform
-    from utils.format_converter import FormatConverter
     from engine.embedding_engine import EmbeddingEngine
     from engine.engine_factory import EngineFactory
+    from backend import frameio, FlowReturn, GObject
+    from tasks.embedding import EmbeddingTask
 
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
@@ -43,7 +39,7 @@ except ImportError as e:
 EMBEDDING_META_HEADER = b"GST-EMBEDDING:"
 
 
-class EmbeddingTransform(VideoTransform):
+class EmbeddingTransform(VideoTransform, EmbeddingTask):
     """
     GStreamer element for extracting frame embeddings for similarity search,
     clustering, or RAG.
@@ -96,7 +92,6 @@ class EmbeddingTransform(VideoTransform):
         super().__init__()
         self.mgr.engine_name = "pyml_embedding_engine"
         EngineFactory.register(self.mgr.engine_name, EmbeddingEngine)
-        self.format_converter = FormatConverter()
         self._frame_count = 0
         self._text_embedding = None
         self._cached_text = None
@@ -135,73 +130,39 @@ class EmbeddingTransform(VideoTransform):
             self._cached_text = None
 
     def do_transform_ip(self, buf):
-        import numpy as np
-
         try:
             self._frame_count += 1
             if self.frame_stride > 1 and (self._frame_count % self.frame_stride) != 1:
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
             if self.engine is None:
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
-            success, map_info = buf.map(Gst.MapFlags.READ)
-            if not success:
-                self.logger.error("Failed to map video buffer for reading")
-                return Gst.FlowReturn.ERROR
-
-            try:
-                frame = self.format_converter.to_rgb(
-                    map_info.data, self.width, self.height, buf, self.sinkpad
-                )
-            finally:
-                buf.unmap(map_info)
-
+            frame = frameio.read_frame(buf, self.sinkpad, self.width, self.height)
             if frame is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
-            emb = self.engine.do_forward(frame, normalize=self.normalize)
+            emb = self.forward(frame)
             if emb is None:
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
             # Update text embedding if needed
             self._update_text_embedding()
 
-            # Build JSON header with dimension info and optional similarity score
-            header = {"dim": int(emb.shape[0]), "dtype": "float32"}
-            if self._text_embedding is not None:
-                similarity = float(np.dot(emb, self._text_embedding))
-                header["text"] = self.text
-                header["similarity"] = round(similarity, 6)
-
-            header_bytes = json.dumps(header).encode("utf-8")
-            header_len = struct.pack("<I", len(header_bytes))
-            emb_bytes = emb.tobytes()
+            # Portable task: serialize the length-prefixed embedding payload.
+            _, payload = self.decode(emb)
 
             # Append embedding as a custom buffer memory chunk.
             # Format: HEADER_PREFIX + 4-byte header length + JSON header + raw float32
-            # Use new_allocate+fill: PyGI hides the maxsize arg in new_wrapped
-            # (it derives it from data length), so passing it explicitly shifts
-            # all subsequent args and causes a GI assertion crash.
-            payload = EMBEDDING_META_HEADER + header_len + header_bytes + emb_bytes
-            tmp = Gst.Buffer.new_allocate(None, len(payload), None)
-            tmp.fill(0, payload)
-            buf.append_memory(tmp.get_memory(0))
+            frameio.append_blob(buf, EMBEDDING_META_HEADER, payload)
 
-            self.logger.debug(
-                f"Embedding extracted: dim={emb.shape[0]}"
-                + (
-                    f" sim={header.get('similarity', 'N/A')}"
-                    if self._text_embedding is not None
-                    else ""
-                )
-            )
+            self.logger.debug(f"Embedding extracted: dim={emb.shape[0]}")
 
-            return Gst.FlowReturn.OK
+            return FlowReturn.OK
 
         except Exception as e:
             self.logger.error(f"Embedding transform error: {e}")
-            return Gst.FlowReturn.ERROR
+            return FlowReturn.ERROR
 
 
 if CAN_REGISTER_ELEMENT:

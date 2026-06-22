@@ -25,22 +25,20 @@ try:
     import gi
 
     gi.require_version("Gst", "1.0")
-    gi.require_version("GstBase", "1.0")
-    gi.require_version("GstVideo", "1.0")
-    from gi.repository import Gst, GObject
+    from gi.repository import Gst  # noqa: E402  (registration only)
 
-    from backend import analytics
     from video_transform import VideoTransform
-    from utils.muxed_buffer_processor import MuxedBufferProcessor
     from engine.clip_engine import ClipEngine
     from engine.engine_factory import EngineFactory
+    from backend import frameio, FlowReturn, GObject
+    from tasks.clip import ClipTask
 
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
     GlobalLogger().warning(f"The 'clip' element will not be available. Error {e}")
 
 
-class CLIPTransform(VideoTransform):
+class CLIPTransform(VideoTransform, ClipTask):
     """
     GStreamer element for zero-shot image classification using CLIP or SigLIP.
 
@@ -171,12 +169,11 @@ class CLIPTransform(VideoTransform):
 
     def do_transform_ip(self, buf):
         try:
-            processor = MuxedBufferProcessor(
-                self.logger, self.width, self.height, 30, 1
+            frames, num_sources, _ = frameio.read_frames(
+                buf, self.sinkpad, self.width, self.height
             )
-            frames, _, num_sources, _ = processor.extract_frames(buf, self.sinkpad)
             if frames is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
             # Use first frame for classification (batch not typical for CLIP)
             frame = frames[0] if num_sources > 1 else frames
@@ -193,41 +190,14 @@ class CLIPTransform(VideoTransform):
                 results = self._last_results
 
             if results is None:
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
-            self._attach_metadata(buf, results)
-            return Gst.FlowReturn.OK
+            self.decode(buf, results)
+            return FlowReturn.OK
 
         except Exception as e:
             self.logger.error(f"CLIP transform error: {e}")
-            return Gst.FlowReturn.ERROR
-
-    def _attach_metadata(self, buf, results):
-        """Attach top-k classification results above threshold as GstAnalytics metadata."""
-        meta = analytics.add_relation_meta(buf)
-        if not meta:
-            self.logger.error("Failed to add analytics relation metadata")
-            return
-
-        attached = 0
-        for label, prob in results:
-            if attached >= self.top_k:
-                break
-            if prob < self.threshold:
-                break
-
-            mtd = analytics.add_object(
-                meta,
-                f"clip_{label.replace(' ', '_')}",
-                0,
-                0,
-                self.width,
-                self.height,
-                prob,
-            )
-            if mtd is not None:
-                attached += 1
-                self.logger.info(f"CLIP: {label} = {prob:.3f}")
+            return FlowReturn.ERROR
 
 
 if CAN_REGISTER_ELEMENT:

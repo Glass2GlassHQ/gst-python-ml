@@ -20,27 +20,24 @@ from log.global_logger import GlobalLogger
 
 CAN_REGISTER_ELEMENT = True
 try:
-    import ctypes
-
     import gi
 
     gi.require_version("Gst", "1.0")
-    gi.require_version("GstBase", "1.0")
-    gi.require_version("GstVideo", "1.0")
-    from gi.repository import Gst, GObject
+    from gi.repository import Gst  # noqa: E402  (registration only)
 
     from video_transform import VideoTransform
     from utils.format_converter import FormatConverter
-    from utils.muxed_buffer_processor import MuxedBufferProcessor
     from engine.super_res_engine import SuperResEngine
     from engine.engine_factory import EngineFactory
+    from backend import frameio, FlowReturn, GObject
+    from tasks.superres import SuperResTask
 
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
     GlobalLogger().warning(f"The 'superres' element will not be available. Error {e}")
 
 
-class SuperResTransform(VideoTransform):
+class SuperResTransform(VideoTransform, SuperResTask):
     """
     GStreamer element for image super-resolution using Real-ESRGAN.
 
@@ -85,74 +82,26 @@ class SuperResTransform(VideoTransform):
 
     def do_transform_ip(self, buf):
         try:
-            processor = MuxedBufferProcessor(
-                self.logger, self.width, self.height, 30, 1
+            frames, _num_sources, fmt = frameio.read_frames(
+                buf, self.sinkpad, self.width, self.height
             )
-            frames, _, num_sources, fmt = processor.extract_frames(buf, self.sinkpad)
             if frames is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
             frame = frames[0] if frames.ndim == 4 else frames
-            upscaled = self._do_forward(frame)
+            upscaled = self.forward(frame)
             if upscaled is None:
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
-            self._apply_superres(buf, upscaled, fmt)
-            return Gst.FlowReturn.OK
+            # Portable task: resize the upscaled frame back to original dims.
+            output, _blob = self.decode(upscaled, fmt)
+            if output is not None:
+                frameio.write_frame(buf, output)
+            return FlowReturn.OK
 
         except Exception as e:
             self.logger.error(f"Super-resolution transform error: {e}")
-            return Gst.FlowReturn.ERROR
-
-    def _do_forward(self, frame):
-        if self.engine:
-            return self.engine.do_forward(frame)
-        return None
-
-    def _apply_superres(self, buf, upscaled, fmt):
-        """Resize upscaled frame back to original dimensions and write to buffer."""
-        import cv2
-        import numpy as np
-
-        # Resize back to original buffer dimensions for in-place compatibility
-        resized = cv2.resize(
-            upscaled, (self.width, self.height), interpolation=cv2.INTER_LANCZOS4
-        )
-        output = self._convert_rgb_to_format(resized, fmt)
-        if output is not None:
-            success, map_info = buf.map(Gst.MapFlags.WRITE)
-            if success:
-                try:
-                    frame_bytes = np.ascontiguousarray(output).tobytes()
-                    dst = (ctypes.c_char * map_info.size).from_buffer(map_info.data)
-                    ctypes.memmove(
-                        dst, frame_bytes, min(len(frame_bytes), map_info.size)
-                    )
-                finally:
-                    buf.unmap(map_info)
-
-    @staticmethod
-    def _convert_rgb_to_format(rgb, fmt):
-        """Convert an RGB numpy array to the target GStreamer video format."""
-        import cv2
-        import numpy as np
-
-        if fmt == "RGB":
-            return rgb
-        elif fmt == "BGR":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        elif fmt == "RGBA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-        elif fmt == "BGRA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-        elif fmt == "ARGB":
-            rgba = cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-            return np.roll(rgba, 1, axis=-1)
-        elif fmt == "ABGR":
-            bgra = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-            return np.roll(bgra, 1, axis=-1)
-        else:
-            return rgb
+            return FlowReturn.ERROR
 
 
 if CAN_REGISTER_ELEMENT:

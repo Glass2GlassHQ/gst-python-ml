@@ -23,6 +23,7 @@ the same names (reusing `backend.core.MLEngineMixin` and implementing
 import os
 
 from backend.analytics import AnalyticsBackend  # noqa: F401  (re-exported)
+from backend.frameio import FrameIO  # noqa: F401  (re-exported)
 from backend.core import MLEngineMixin  # noqa: F401  (re-exported)
 
 BACKEND = os.environ.get("GSTML_BACKEND", "gst").lower()
@@ -33,6 +34,7 @@ if BACKEND == "gst":
         BaseAggregator,
         VideoTransform,
         analytics,
+        frameio,
         FlowReturn,
         GObject,
     )
@@ -45,8 +47,10 @@ __all__ = [
     "BaseAggregator",
     "VideoTransform",
     "analytics",
+    "frameio",
     "FlowReturn",
     "GObject",
     "AnalyticsBackend",
+    "FrameIO",
     "MLEngineMixin",
 ]

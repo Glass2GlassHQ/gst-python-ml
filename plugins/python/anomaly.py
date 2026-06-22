@@ -20,21 +20,17 @@ from log.global_logger import GlobalLogger
 
 CAN_REGISTER_ELEMENT = True
 try:
-    import ctypes
-    import json
-
     import gi
 
     gi.require_version("Gst", "1.0")
-    gi.require_version("GstBase", "1.0")
-    gi.require_version("GstVideo", "1.0")
-    from gi.repository import Gst, GObject
+    from gi.repository import Gst  # noqa: E402  (registration only)
 
     from video_transform import VideoTransform
     from utils.format_converter import FormatConverter
-    from utils.muxed_buffer_processor import MuxedBufferProcessor
     from engine.anomaly_engine import AnomalyEngine
     from engine.engine_factory import EngineFactory
+    from backend import frameio, FlowReturn, GObject
+    from tasks.anomaly import AnomalyTask
 
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
@@ -44,7 +40,7 @@ except ImportError as e:
 ANOMALY_META_HEADER = b"GST-ANOMALY:"
 
 
-class AnomalyTransform(VideoTransform):
+class AnomalyTransform(VideoTransform, AnomalyTask):
     """
     GStreamer element for anomaly detection in video frames.
 
@@ -114,107 +110,28 @@ class AnomalyTransform(VideoTransform):
                 self.engine.load_reference(self.reference_path)
                 self._reference_loaded = True
 
-            processor = MuxedBufferProcessor(
-                self.logger, self.width, self.height, 30, 1
+            frames, _num_sources, fmt = frameio.read_frames(
+                buf, self.sinkpad, self.width, self.height
             )
-            frames, _, num_sources, fmt = processor.extract_frames(buf, self.sinkpad)
             if frames is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
             frame = frames[0] if frames.ndim == 4 else frames
-            result = self._do_forward(frame)
+            result = self.forward(frame)
             if result is None:
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
-            self._apply_anomaly(buf, result, fmt, frame)
-            return Gst.FlowReturn.OK
+            # Portable task: produce the optional overlay frame and the metadata.
+            output, blob = self.decode(frame, result, fmt)
+            if output is not None:
+                frameio.write_frame(buf, output)
+            if blob is not None:
+                frameio.append_blob(buf, ANOMALY_META_HEADER, blob)
+            return FlowReturn.OK
 
         except Exception as e:
             self.logger.error(f"Anomaly detection transform error: {e}")
-            return Gst.FlowReturn.ERROR
-
-    def _do_forward(self, frame):
-        if self.engine:
-            return self.engine.do_forward(frame, threshold=self.threshold)
-        return None
-
-    def _apply_anomaly(self, buf, result, fmt, frame):
-        """Overlay heatmap on frame and append anomaly metadata."""
-        import cv2
-        import numpy as np
-
-        is_anomaly = result.get("is_anomaly", False)
-        heatmap = result.get("heatmap")
-
-        # Draw heatmap overlay before appending read-only metadata memory
-        if self.draw_heatmap and is_anomaly and heatmap is not None:
-            H, W = frame.shape[:2]
-            heatmap_resized = cv2.resize(heatmap, (W, H))
-            heatmap_uint8 = (heatmap_resized * 255).astype(np.uint8)
-            heatmap_color = cv2.applyColorMap(heatmap_uint8, cv2.COLORMAP_JET)
-            heatmap_rgb = cv2.cvtColor(heatmap_color, cv2.COLOR_BGR2RGB)
-
-            overlay = cv2.addWeighted(frame, 0.6, heatmap_rgb, 0.4, 0)
-
-            # Draw anomaly score text
-            score = result.get("score", 0.0)
-            text = f"ANOMALY: {score:.3f}"
-            cv2.putText(
-                overlay,
-                text,
-                (12, 36),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1.0,
-                (255, 0, 0),
-                2,
-                cv2.LINE_AA,
-            )
-
-            output = self._convert_rgb_to_format(overlay, fmt)
-            if output is not None:
-                success, map_info = buf.map(Gst.MapFlags.WRITE)
-                if success:
-                    try:
-                        frame_bytes = np.ascontiguousarray(output).tobytes()
-                        dst = (ctypes.c_char * map_info.size).from_buffer(map_info.data)
-                        ctypes.memmove(
-                            dst, frame_bytes, min(len(frame_bytes), map_info.size)
-                        )
-                    finally:
-                        buf.unmap(map_info)
-
-        # Append anomaly metadata (without the numpy heatmap)
-        meta = {
-            "score": result.get("score", 0.0),
-            "is_anomaly": is_anomaly,
-        }
-        meta_bytes = ANOMALY_META_HEADER + json.dumps(meta).encode("utf-8")
-        tmp = Gst.Buffer.new_allocate(None, len(meta_bytes), None)
-        tmp.fill(0, meta_bytes)
-        buf.append_memory(tmp.get_memory(0))
-
-    @staticmethod
-    def _convert_rgb_to_format(rgb, fmt):
-        """Convert an RGB numpy array to the target GStreamer video format."""
-        import cv2
-        import numpy as np
-
-        if fmt == "RGB":
-            return rgb
-        elif fmt == "BGR":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-        elif fmt == "RGBA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-        elif fmt == "BGRA":
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-        elif fmt == "ARGB":
-            rgba = cv2.cvtColor(rgb, cv2.COLOR_RGB2RGBA)
-            return np.roll(rgba, 1, axis=-1)
-        elif fmt == "ABGR":
-            bgra = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGRA)
-            return np.roll(bgra, 1, axis=-1)
-        else:
-            return rgb
+            return FlowReturn.ERROR
 
 
 if CAN_REGISTER_ELEMENT:
