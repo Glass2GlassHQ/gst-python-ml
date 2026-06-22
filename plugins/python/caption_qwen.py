@@ -26,7 +26,7 @@ try:
 
     from gi.repository import Gst, GObject  # noqa: E402
 
-    from engine.pytorch_vision_engine import PyTorchVisionEngine
+    from engine.caption_qwen_engine import CaptionQwenEngine
     from engine.engine_factory import EngineFactory
     from base_caption import BaseCaption
 
@@ -35,63 +35,6 @@ except ImportError as e:
     GlobalLogger().warning(
         f"The 'pyml_caption_qwen' element will not be available. Error {e}"
     )
-
-
-class CaptionQwenEngine(PyTorchVisionEngine):
-    def do_load_model(self, model_name, **kwargs):
-        """Load a Qwen2.5-VL model from Hugging Face."""
-        import torch
-        from transformers import Qwen2_5_VLForConditionalGeneration, AutoProcessor
-
-        try:
-            self.model = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                model_name,
-                torch_dtype="auto",
-                dtype=torch.float16,
-                device_map="auto",
-            )
-            self.processor = AutoProcessor.from_pretrained(model_name)
-
-            self.logger.info(f"{model_name} model and processor loaded successfully.")
-            self.model.eval()
-
-            # Skip .to() for quantized models
-            if not (hasattr(self.model, "is_quantized") and self.model.is_quantized):
-                self.execute_with_stream(lambda: self.model.to(self.device))
-                self.logger.info(f"Model moved to {self.device}")
-
-            return True
-
-        except Exception as e:
-            self.logger.error(f"Error loading model '{model_name}': {e}")
-            self.processor = None
-            self.model = None
-            return False
-
-    def _prepare_messages(self, images):
-        content = [{"type": "image", "image": img} for img in images]
-        content.append({"type": "text", "text": self.prompt})
-        return [{"role": "user", "content": content}]
-
-    def _process_inputs(self, prompt_text, images):
-        from qwen_vl_utils import process_vision_info
-
-        image_inputs, video_inputs = process_vision_info(
-            self._prepare_messages(images)
-        )  # Note: Uses messages directly
-        return self.processor(
-            text=[prompt_text],
-            images=image_inputs,
-            videos=video_inputs,
-            padding=True,
-            return_tensors="pt",
-        ).to(self.device)
-
-    def _trim_generated_ids(self, inputs, generate_ids):
-        return [
-            out_ids[len(in_ids) :]
-            for in_ids, out_ids in zip(inputs.input_ids, generate_ids)
-        ]
 
 
 class CaptionQwen(BaseCaption):

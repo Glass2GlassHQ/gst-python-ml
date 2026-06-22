@@ -28,13 +28,12 @@ try:
     gi.require_version("Gst", "1.0")
     gi.require_version("GstBase", "1.0")
     gi.require_version("GstVideo", "1.0")
-    gi.require_version("GstAnalytics", "1.0")
-    gi.require_version("GLib", "2.0")
-    from gi.repository import Gst, GObject, GstAnalytics, GLib
+    from gi.repository import Gst, GObject
 
+    from backend import analytics
     from base_objectdetector import BaseObjectDetector
     from utils.format_converter import FormatConverter
-    from engine.pytorch_engine import PyTorchEngine
+    from engine.yolo_pose_engine import YoloPoseEngine
     from engine.engine_factory import EngineFactory
 
 except ImportError as e:
@@ -84,46 +83,6 @@ SKELETON = [
     (12, 14),
     (14, 16),  # right leg
 ]
-
-
-class YoloPoseEngine(PyTorchEngine):
-    """PyTorch engine for YOLO pose estimation models."""
-
-    def do_load_model(self, model_name, **kwargs):
-        try:
-            from ultralytics import YOLO
-
-            self.model = YOLO(f"{model_name}.pt")
-            self.execute_with_stream(lambda: self.model.to(self.device))
-            self.logger.info(f"YOLO pose model '{model_name}' loaded on {self.device}")
-        except Exception as e:
-            raise ValueError(f"Failed to load YOLO pose model '{model_name}': {e}")
-
-    def do_forward(self, frames):
-        import numpy as np
-
-        is_batch = isinstance(frames, np.ndarray) and frames.ndim == 4
-        writable = np.array(frames, copy=True)
-        batch_size = writable.shape[0] if is_batch else 1
-
-        model = self.get_model()
-        if model is None:
-            self.logger.error("Pose model not loaded")
-            return None if not is_batch else [None] * batch_size
-
-        try:
-            img_list = (
-                [writable[i] for i in range(batch_size)] if is_batch else [writable]
-            )
-            results = self.execute_with_stream(
-                lambda: model(img_list, imgsz=640, conf=0.25, verbose=False)
-            )
-            if not results:
-                return None if not is_batch else [None] * batch_size
-            return results[0] if not is_batch else results
-        except Exception as e:
-            self.logger.error(f"Pose inference error: {e}")
-            return None if not is_batch else [None] * batch_size
 
 
 class YOLOPoseTransform(BaseObjectDetector):
@@ -179,7 +138,7 @@ class YOLOPoseTransform(BaseObjectDetector):
             return
 
         # Attach person bounding boxes via GstAnalytics (compatible with pyml_overlay)
-        meta = GstAnalytics.buffer_add_analytics_relation_meta(buf)
+        meta = analytics.add_relation_meta(buf)
         if not meta:
             self.logger.error("Failed to add analytics relation metadata")
             return
@@ -189,16 +148,16 @@ class YOLOPoseTransform(BaseObjectDetector):
             x1, y1, x2, y2 = boxes.xyxy[i]
             score = boxes.conf[i].item()
 
-            qk = GLib.quark_from_string(f"stream_{stream_idx}_person")
-            ret, _ = meta.add_od_mtd(
-                qk,
+            mtd = analytics.add_object(
+                meta,
+                f"stream_{stream_idx}_person",
                 x1.item(),
                 y1.item(),
                 x2.item() - x1.item(),
                 y2.item() - y1.item(),
                 score,
             )
-            if not ret:
+            if mtd is None:
                 self.logger.error(f"Failed to add od_mtd for person {i}")
                 continue
 

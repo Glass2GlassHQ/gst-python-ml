@@ -30,11 +30,10 @@ try:
     gi.require_version("Gst", "1.0")
     gi.require_version("GstBase", "1.0")
     gi.require_version("GstVideo", "1.0")
-    gi.require_version("GstAnalytics", "1.0")
-    gi.require_version("GLib", "2.0")
-    from gi.repository import Gst, GstBase, GstAnalytics, GObject, GLib  # noqa: E402
+    from gi.repository import Gst, GstBase, GObject  # noqa: E402
 
     from log.logger_factory import LoggerFactory  # noqa: E402
+    from backend import analytics  # noqa: E402
 
     # Header prefix for alert buffer metadata
     ALERT_META_HEADER = b"GST-ALERT:"
@@ -219,32 +218,11 @@ class AlertTransform(GstBase.BaseTransform):
         return True
 
     def _read_detections(self, buf):
-        """Extract detections from upstream GstAnalytics od_mtd."""
-        detections = []
-        meta = GstAnalytics.buffer_get_analytics_relation_meta(buf)
+        """Extract detections from upstream object-detection metadata."""
+        meta = analytics.get_relation_meta(buf)
         if not meta:
-            return detections
-
-        count = GstAnalytics.relation_get_length(meta)
-        for index in range(count):
-            ret, od_mtd = meta.get_od_mtd(index)
-            if not ret or od_mtd is None:
-                continue
-            label_quark = od_mtd.get_obj_type()
-            label = GLib.quark_to_string(label_quark)
-            presence, x, y, w, h, score = od_mtd.get_location()
-            if presence:
-                detections.append(
-                    {
-                        "label": label,
-                        "score": score,
-                        "x": x,
-                        "y": y,
-                        "w": w,
-                        "h": h,
-                    }
-                )
-        return detections
+            return []
+        return analytics.read_objects(meta)
 
     def _check_rule(self, rule, detection):
         """Check if a detection matches an alert rule."""

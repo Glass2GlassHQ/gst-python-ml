@@ -24,9 +24,9 @@ from video_transform import VideoTransform
 gi.require_version("Gst", "1.0")
 gi.require_version("GstBase", "1.0")
 gi.require_version("GstVideo", "1.0")
-gi.require_version("GstAnalytics", "1.0")
-gi.require_version("GLib", "2.0")
-from gi.repository import Gst, GstAnalytics, GLib  # noqa: E402
+from gi.repository import Gst  # noqa: E402
+
+from backend import analytics  # noqa: E402
 
 
 class BaseClassifier(VideoTransform):
@@ -111,8 +111,9 @@ class BaseClassifier(VideoTransform):
         self.logger.info(f"Classified as {label} with confidence score {score:.2f}")
 
         # Attach classification metadata
-        meta = GstAnalytics.buffer_add_analytics_relation_meta(buf)
+        meta = analytics.add_relation_meta(buf)
         if meta:
-            qk = GLib.quark_from_string(f"class_{label}")
-            meta.add_od_mtd(qk, 0, 0, self.width, self.height, score)
+            analytics.add_object(
+                meta, f"class_{label}", 0, 0, self.width, self.height, score
+            )
             self.logger.info(f"Classified as {label} with score {score:.2f}")

@@ -27,7 +27,7 @@ try:
     gi.require_version("GObject", "2.0")
     from gi.repository import Gst, GObject  # noqa: E402
     from base_transcribe import BaseTranscribe
-    from engine.pytorch_engine import PyTorchEngine
+    from engine.whisper_engine import WhisperEngine
     from engine.engine_factory import EngineFactory
 
 except ImportError as e:
@@ -35,21 +35,6 @@ except ImportError as e:
     GlobalLogger().warning(
         f"The 'pyml_whispertranscribe' element will not be available. Error: {e}"
     )
-
-
-class WhisperEngine(PyTorchEngine):
-    def do_load_model(self, model_name, **kwargs):
-        from faster_whisper import WhisperModel
-
-        if not model_name:
-            return
-        compute_type = "float16" if self.device.startswith("cuda") else "int8"
-        self.logger.info(
-            f"Loading Whisper model on device: {self.device} with compute_type: {compute_type}"
-        )
-        self.model = WhisperModel(
-            model_name, device=self.device, compute_type=compute_type
-        )
 
 
 class WhisperTranscribe(BaseTranscribe):

@@ -20,9 +20,8 @@ import gi
 
 gi.require_version("Gst", "1.0")
 gi.require_version("GstBase", "1.0")
-gi.require_version("GstAnalytics", "1.0")
-gi.require_version("GLib", "2.0")
-from gi.repository import Gst, GObject, GstAnalytics, GLib  # noqa: E402
+from gi.repository import Gst, GObject  # noqa: E402
+from backend import analytics  # noqa: E402
 from log.logger_factory import LoggerFactory  # noqa: E402
 from utils.metadata import Metadata  # noqa: E402
 from collections import defaultdict  # noqa: E402
@@ -121,25 +120,27 @@ class StreamDemux(Gst.Element):
         out_buffer.duration = buffer.duration
         out_buffer.dts = buffer.dts
         out_buffer.offset = buffer.offset
-        meta = GstAnalytics.buffer_get_analytics_relation_meta(buffer)
+        meta = analytics.get_relation_meta(buffer)
         if meta:
-            out_meta = GstAnalytics.buffer_add_analytics_relation_meta(out_buffer)
-            count = GstAnalytics.relation_get_length(meta)
+            out_meta = analytics.add_relation_meta(out_buffer)
+            objects = analytics.read_objects(meta)
             self.logger.info(
-                f"Processing {count} analytics relations for stream_{stream_idx}"
+                f"Processing {len(objects)} analytics relations for stream_{stream_idx}"
             )
-            for i in range(count):
-                ret, od_mtd = meta.get_od_mtd(i)
-                if ret and od_mtd:
-                    label_quark = od_mtd.get_obj_type()
-                    label = GLib.quark_to_string(label_quark)
-                    if f"stream_{stream_idx}_" in label:
-                        presence, x, y, w, h, conf = od_mtd.get_location()
-                        if presence:
-                            qk = GLib.quark_from_string(label)
-                            ret, new_od_mtd = out_meta.add_od_mtd(qk, x, y, w, h, conf)
-                            if not ret:
-                                self.logger.error(f"Failed to attach metadata: {label}")
+            for obj in objects:
+                label = obj["label"]
+                if f"stream_{stream_idx}_" in label:
+                    new_od_mtd = analytics.add_object(
+                        out_meta,
+                        label,
+                        obj["x"],
+                        obj["y"],
+                        obj["w"],
+                        obj["h"],
+                        obj["score"],
+                    )
+                    if new_od_mtd is None:
+                        self.logger.error(f"Failed to attach metadata: {label}")
         return out_buffer
 
     def push_buffer(self, pad, buffer, pad_name):

@@ -27,12 +27,11 @@ try:
     import gi
 
     gi.require_version("Gst", "1.0")
-    gi.require_version("GstAnalytics", "1.0")
-    gi.require_version("GLib", "2.0")
-    from gi.repository import Gst, GObject, GLib, GstAnalytics  # noqa: E402
+    from gi.repository import Gst, GObject  # noqa: E402
 
     from log.logger_factory import LoggerFactory  # noqa: E402
     from utils.runtime_utils import runtime_check_gstreamer_version  # noqa: E402
+    from backend import analytics  # noqa: E402
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
     GlobalLogger().warning(
@@ -237,40 +236,21 @@ class KafkaSink(Gst.Element):
         """Extract object detection metadata from GstBuffer using GstAnalyticsRelationMeta."""
         metadata = []
 
-        meta = GstAnalytics.buffer_get_analytics_relation_meta(buffer)
+        meta = analytics.get_relation_meta(buffer)
         if not meta:
-            self.logger.warning("No GstAnalytics metadata found on buffer.")
+            self.logger.warning("No analytics metadata found on buffer.")
             return metadata
 
         try:
-            count = GstAnalytics.relation_get_length(meta)
-            for index in range(count):
-                ret, od_mtd = meta.get_od_mtd(index)
-                if not ret or od_mtd is None:
-                    break
-
-                label_quark = od_mtd.get_obj_type()
-                label = GLib.quark_to_string(label_quark)
-                location = od_mtd.get_location()
-
-                presence, x, y, w, h, loc_conf_lvl = location
-                if presence:
-                    x1 = x
-                    y1 = y
-                    x2 = x + w
-                    y2 = y + h
-
-                    metadata.append(
-                        {
-                            "label": label,
-                            "confidence": loc_conf_lvl,
-                            "box": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
-                        }
-                    )
-                else:
-                    self.logger.warning(
-                        "Presence flag in location is False. Skipping this entry."
-                    )
+            for obj in analytics.read_objects(meta):
+                x, y, w, h = obj["x"], obj["y"], obj["w"], obj["h"]
+                metadata.append(
+                    {
+                        "label": obj["label"],
+                        "confidence": obj["score"],
+                        "box": {"x1": x, "y1": y, "x2": x + w, "y2": y + h},
+                    }
+                )
 
         except Exception as e:
             self.logger.error(f"Error while extracting metadata: {e}")

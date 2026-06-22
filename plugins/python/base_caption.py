@@ -24,10 +24,9 @@ import gi
 gi.require_version("Gst", "1.0")
 gi.require_version("GstBase", "1.0")
 gi.require_version("GstVideo", "1.0")
-gi.require_version("GLib", "2.0")
-gi.require_version("GstAnalytics", "1.0")
 
-from gi.repository import Gst, GObject, GstAnalytics, GLib, GstBase  # noqa: E402
+from gi.repository import Gst, GObject, GstBase  # noqa: E402
+from backend import analytics  # noqa: E402
 from video_transform import VideoTransform
 
 TEXT_CAPS = Gst.Caps.from_string("text/x-raw, format=utf8")
@@ -165,11 +164,10 @@ class BaseCaption(VideoTransform):
                     result = self.engine.do_forward(frame)
                     if result:
                         self.caption = result
-                        meta = GstAnalytics.buffer_add_analytics_relation_meta(buf)
+                        meta = analytics.add_relation_meta(buf)
                         if meta:
-                            qk = GLib.quark_from_string(f"{result}")
-                            ret, mtd = meta.add_one_cls_mtd(0, qk)
-                            if ret:
+                            mtd = analytics.add_classification(meta, 0, f"{result}")
+                            if mtd is not None:
                                 self.logger.info(f"Successfully added caption {result}")
                             else:
                                 self.logger.error(
@@ -215,11 +213,12 @@ class BaseCaption(VideoTransform):
                     for idx, result in enumerate(results_list):
                         if result:
                             caption = result
-                            meta = GstAnalytics.buffer_add_analytics_relation_meta(buf)
+                            meta = analytics.add_relation_meta(buf)
                             if meta:
-                                qk = GLib.quark_from_string(f"stream_{idx}_{result}")
-                                ret, mtd = meta.add_one_cls_mtd(idx, qk)
-                                if ret:
+                                mtd = analytics.add_classification(
+                                    meta, idx, f"stream_{idx}_{result}"
+                                )
+                                if mtd is not None:
                                     self.logger.info(
                                         f"Stream {idx}: Successfully added caption {result}"
                                     )

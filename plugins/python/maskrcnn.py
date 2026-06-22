@@ -25,11 +25,10 @@ try:
     gi.require_version("Gst", "1.0")
     gi.require_version("GstBase", "1.0")
     gi.require_version("GstVideo", "1.0")
-    gi.require_version("GstAnalytics", "1.0")
-    gi.require_version("GLib", "2.0")
-    from gi.repository import Gst, GObject, GstAnalytics, GLib  # noqa: E402
+    from gi.repository import Gst, GObject  # noqa: E402
 
     from base_objectdetector import BaseObjectDetector
+    from tasks.maskrcnn import MaskRCNNTask
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
     GlobalLogger().warning(
@@ -37,7 +36,7 @@ except ImportError as e:
     )
 
 
-class MaskRCNN(BaseObjectDetector):
+class MaskRCNN(BaseObjectDetector, MaskRCNNTask):
     """
     GStreamer element for Mask R-CNN model inference on video frames.
     """
@@ -48,60 +47,6 @@ class MaskRCNN(BaseObjectDetector):
         "Applies the MaskRCNN object detection and segmentation model",
         "Aaron Boxer <aaron.boxer@collabora.com>",
     )
-
-    def do_decode(self, buf, output, stream_idx=0):
-        """
-        Processes the Mask R-CNN model's output detections and adds metadata to the GStreamer buffer,
-        tagged with the stream index.
-        """
-        boxes = output["boxes"]
-        labels = output["labels"]
-        scores = output["scores"]
-        masks = output["masks"]  # Additional mask outputs for Mask R-CNN
-
-        self.logger.info(
-            f"Processing buffer at address: {hex(id(buf))} for stream {stream_idx}"
-        )
-        self.logger.info(f"Stream {stream_idx} - Processing {len(boxes)} detections")
-
-        # Add analytics metadata to the buffer
-        meta = GstAnalytics.buffer_add_analytics_relation_meta(buf)
-        if not meta:
-            self.logger.error(f"Stream {stream_idx} - Failed to add analytics metadata")
-            return
-
-        for i, (box, label, score, mask) in enumerate(
-            zip(boxes, labels, scores, masks)
-        ):
-            x1, y1, x2, y2 = box
-            self.logger.info(
-                f"Stream {stream_idx} - Detection {i}: Box coordinates (x1={x1}, y1={y1}, x2={x2}, y2={y2}), "
-                f"Label={label}, Score={score:.2f}"
-            )
-
-            # Use stream_idx in the quark string to differentiate streams
-            qk_string = f"stream_{stream_idx}_label_{label}"
-            qk = GLib.quark_from_string(qk_string)
-            ret, mtd = meta.add_od_mtd(qk, x1, y1, x2 - x1, y2 - y1, score)
-            if ret:
-                self.logger.info(
-                    f"Stream {stream_idx} - Successfully added object detection metadata with quark {qk_string} and mtd {mtd}"
-                )
-            else:
-                self.logger.error(
-                    f"Stream {stream_idx} - Failed to add object detection metadata"
-                )
-
-        attached_meta = GstAnalytics.buffer_get_analytics_relation_meta(buf)
-        if attached_meta:
-            count = GstAnalytics.relation_get_length(attached_meta)
-            self.logger.info(
-                f"Stream {stream_idx} - Metadata successfully attached to buffer at address: {hex(id(buf))} with {count} relations"
-            )
-        else:
-            self.logger.warning(
-                f"Stream {stream_idx} - Failed to retrieve attached metadata immediately after addition for buffer: {hex(id(buf))}"
-            )
 
 
 if CAN_REGISTER_ELEMENT:

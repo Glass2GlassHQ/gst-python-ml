@@ -1,0 +1,85 @@
+# AnalyticsBackend
+# Copyright (C) 2024-2026 Collabora Ltd.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Library General Public
+# License as published by the Free Software Foundation; either
+# version 2 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Library General Public
+# License along with this library; if not, write to the
+# Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+# Boston, MA 02110-1301, USA.
+
+"""Framework-agnostic interface for analytics metadata.
+
+Detection / classification / tracking results are attached to a buffer as
+analytics metadata. GStreamer expresses this via `GstAnalytics` relation
+metadata. Elements should go through this interface instead of calling the
+framework API directly, so the same element code can run on a different backend
+later.
+
+The `meta` handle and the detection handles returned by `add_*` are opaque to
+callers: pass them back into the same backend (e.g. into `relate`). The read
+side (`read_objects`) returns plain dicts so consumers need no framework types.
+"""
+
+from abc import ABC, abstractmethod
+
+
+class AnalyticsBackend(ABC):
+    """Attach to and read analytics metadata on a buffer/frame."""
+
+    @abstractmethod
+    def add_relation_meta(self, buf):
+        """Attach (or fetch the existing) analytics relation meta. Returns an
+        opaque meta handle, or None on failure."""
+
+    @abstractmethod
+    def get_relation_meta(self, buf):
+        """Return the attached relation meta handle, or None if absent."""
+
+    @abstractmethod
+    def remove_relation_meta(self, buf):
+        """Remove any attached relation meta. Returns True if something was
+        removed."""
+
+    @abstractmethod
+    def relation_length(self, meta):
+        """Number of relations (detections) currently held by `meta`."""
+
+    @abstractmethod
+    def quark(self, label):
+        """Intern a string label into the backend's id space (a GQuark for
+        GStreamer). Accepts a str; ints pass through unchanged."""
+
+    @abstractmethod
+    def add_object(self, meta, label, x, y, w, h, score):
+        """Add an object-detection box (x, y, w, h) with a class `label` and
+        confidence `score`. Returns an opaque detection handle, or None."""
+
+    @abstractmethod
+    def add_classification(self, meta, index, label):
+        """Add a single-class classification result tagged with a stream
+        `index` and a `label`. Returns an opaque handle, or None."""
+
+    @abstractmethod
+    def add_tracking(self, meta, track_id, timestamp=None):
+        """Add a tracking record for `track_id`. `timestamp` defaults to the
+        backend's current running time. Returns an opaque handle, or None."""
+
+    @abstractmethod
+    def relate(self, meta, src, dst):
+        """Relate two handles (e.g. a detection to its tracking record).
+        Returns True on success."""
+
+    @abstractmethod
+    def read_objects(self, meta):
+        """Read back the object detections held by `meta`. Returns a list of
+        dicts with keys: ``label`` (str), ``x``, ``y``, ``w``, ``h``, ``score``.
+        Only present (valid-location) detections are returned."""

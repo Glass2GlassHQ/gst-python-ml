@@ -16,38 +16,11 @@
 # Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 # Boston, MA 02110-1301, USA.
 
-import gi
+"""Compatibility shim. `VideoTransform` now lives behind the pluggable backend
+in `backend/` (see `backend/__init__.py`). Leaf plugins keep importing it from
+here; the active backend is chosen by the GSTML_BACKEND environment variable.
+"""
 
-gi.require_version("Gst", "1.0")
-gi.require_version("GstBase", "1.0")
-gi.require_version("GstVideo", "1.0")
-from gi.repository import Gst  # noqa: E402
+from backend import VideoTransform
 
-from base_transform import BaseTransform  # noqa: E402
-
-
-class VideoTransform(BaseTransform):
-    """
-    GStreamer element for video transformation using a PyTorch model.
-    """
-
-    # Define VIDEO_CAPS to support multiple formats
-    VIDEO_CAPS = Gst.Caps.from_string(
-        "video/x-raw,format=(string){ RGB, RGBA, ARGB, BGRA, ABGR },"
-        "width=(int)[1,2147483647],height=(int)[1,2147483647]"
-    )
-    __gsttemplates__ = (
-        Gst.PadTemplate.new(
-            "src", Gst.PadDirection.SRC, Gst.PadPresence.ALWAYS, VIDEO_CAPS
-        ),
-        Gst.PadTemplate.new(
-            "sink", Gst.PadDirection.SINK, Gst.PadPresence.ALWAYS, VIDEO_CAPS
-        ),
-    )
-
-    def do_set_caps(self, incaps, outcaps):
-        struct = incaps.get_structure(0)
-        self.width = struct.get_int("width").value
-        self.height = struct.get_int("height").value
-
-        return True
+__all__ = ["VideoTransform"]

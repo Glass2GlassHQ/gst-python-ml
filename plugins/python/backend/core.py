@@ -1,0 +1,110 @@
+# MLEngineMixin
+# Copyright (C) 2024-2026 Collabora Ltd.
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Library General Public
+# License as published by the Free Software Foundation; either
+# version 2 of the License, or (at your option) any later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Library General Public
+# License along with this library; if not, write to the
+# Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
+# Boston, MA 02110-1301, USA.
+
+"""Portable, framework-agnostic ML element logic.
+
+`MLEngineMixin` holds everything an ML element needs that does NOT depend on
+the multimedia framework: the engine/model lifecycle and the backing storage
+for the common tunable properties.
+
+A framework backend builds a concrete element by combining this mixin with its
+own element base class (`GstBase.BaseTransform`, `GstBase.Aggregator`, ...) and
+declaring the properties in whatever form the framework requires
+(`@GObject.Property` for GStreamer, etc). The property getters/setters read and
+write the `self._<name>` fields initialised here, so the shared logic stays
+identical across backends.
+
+This module imports no `gi`; keep it that way so the same mixin can load under a
+non-GStreamer backend.
+"""
+
+from engine.engine_manager import EngineManager
+from log.logger_factory import LoggerFactory
+
+
+class MLEngineMixin:
+    """Engine/model lifecycle shared by every ML element, on any backend."""
+
+    def _ml_init(self):
+        """Initialise shared ML state. Call this from the element's __init__."""
+        self.logger = LoggerFactory.get(LoggerFactory.LOGGER_TYPE_GST)
+        self.mgr = EngineManager(self.logger)
+        self.kwargs = {}
+        self._batch_size = 1
+        self._frame_stride = 1
+        self._model_name = None
+        self._device_queue_id = 0
+        self._system_prompt = None
+        self._prompt = None
+        self._compile = False
+
+    @property
+    def engine(self):
+        return self.mgr.engine
+
+    # Engine / model lifecycle. None of this touches the framework, so every
+    # backend reuses it verbatim.
+    def initialize_engine(self):
+        if not self.engine and self.mgr.engine_name:
+            self.mgr.initialize_engine()
+            self.engine.batch_size = self._batch_size
+            self.engine.frame_stride = self._frame_stride
+            if self._device_queue_id:
+                self.engine.device_queue_id = self._device_queue_id
+        if not self.engine:
+            self.logger.error(f"Unsupported ML engine: {self.mgr.engine_name}")
+
+    def do_load_model(self):
+        self.initialize_engine()
+        if self.engine is None:
+            self.logger.error(
+                f"Cannot load model {self._model_name}: engine not initialized"
+            )
+            return
+        if self._model_name is None:
+            self.logger.warning("Cannot load model as model name is not set")
+            return
+        self.mgr.do_load_model(self._model_name, **self.kwargs)
+
+    def get_model(self):
+        """Gets the model from the engine."""
+        self.initialize_engine()
+        if self.engine is None:
+            self.logger.error(
+                f"Cannot get model {self._model_name}: engine not initialized"
+            )
+            return None
+        if self.engine:
+            return self.engine.get_model()
+        return None
+
+    def set_model(self, model):
+        """Sets the model in the engine."""
+        self.initialize_engine()
+        if self.engine is None:
+            self.logger.error("Cannot load model: engine not initialized")
+            return False
+        self.engine.model = model
+        self.logger.info("Model set successfully in the engine.")
+
+    def get_tokenizer(self):
+        self.initialize_engine()
+        if self.engine is None:
+            self.logger.error("Cannot get tokenizer: engine not initialized")
+            return None
+        return self.mgr.get_tokenizer()

@@ -25,11 +25,10 @@ try:
     gi.require_version("Gst", "1.0")
     gi.require_version("GstBase", "1.0")
     gi.require_version("GstVideo", "1.0")
-    gi.require_version("GstAnalytics", "1.0")
-    gi.require_version("GLib", "2.0")
-    from gi.repository import Gst, GstBase, GstAnalytics, GObject, GLib  # noqa: E402
+    from gi.repository import Gst, GstBase, GObject  # noqa: E402
 
     from log.logger_factory import LoggerFactory  # noqa: E402
+    from backend import analytics  # noqa: E402
 
     VIDEO_SRC_CAPS = Gst.Caps.from_string("video/x-raw")
     VIDEO_SINK_CAPS = Gst.Caps.from_string("video/x-raw")
@@ -285,21 +284,16 @@ class TrackerTransform(GstBase.BaseTransform):
         return self._tracker
 
     def _read_detections(self, buf):
-        """Extract detections from upstream GstAnalytics od_mtd."""
+        """Extract detections from upstream object-detection metadata."""
         detections = []
-        meta = GstAnalytics.buffer_get_analytics_relation_meta(buf)
+        meta = analytics.get_relation_meta(buf)
         if not meta:
             return detections
 
-        count = GstAnalytics.relation_get_length(meta)
-        for index in range(count):
-            ret, od_mtd = meta.get_od_mtd(index)
-            if not ret or od_mtd is None:
-                continue
-            label_quark = od_mtd.get_obj_type()
-            presence, x, y, w, h, score = od_mtd.get_location()
-            if presence:
-                detections.append([x, y, w, h, score, label_quark])
+        for obj in analytics.read_objects(meta):
+            detections.append(
+                [obj["x"], obj["y"], obj["w"], obj["h"], obj["score"], obj["label"]]
+            )
         return detections
 
     def do_transform_ip(self, buf):
@@ -315,20 +309,20 @@ class TrackerTransform(GstBase.BaseTransform):
             tracked = tracker.update(detections)
 
             # Attach tracking results as new analytics metadata
-            meta = GstAnalytics.buffer_add_analytics_relation_meta(buf)
+            meta = analytics.add_relation_meta(buf)
             if not meta:
                 self.logger.error(
                     "Failed to add analytics relation metadata for tracking"
                 )
                 return Gst.FlowReturn.ERROR
 
-            for track_id, bbox, label_quark in tracked:
-                label_str = GLib.quark_to_string(label_quark)
+            for track_id, bbox, label_str in tracked:
                 track_label = f"{label_str}_id_{track_id}"
-                qk = GLib.quark_from_string(track_label)
                 x, y, w, h = bbox
-                ret, od_mtd = meta.add_od_mtd(qk, int(x), int(y), int(w), int(h), 1.0)
-                if not ret:
+                od_mtd = analytics.add_object(
+                    meta, track_label, int(x), int(y), int(w), int(h), 1.0
+                )
+                if od_mtd is None:
                     self.logger.error(
                         f"Failed to add tracking od_mtd for track {track_id}"
                     )

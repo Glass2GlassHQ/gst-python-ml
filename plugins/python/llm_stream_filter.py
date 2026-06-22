@@ -26,10 +26,9 @@ try:
     gi.require_version("Gst", "1.0")
     gi.require_version("GstBase", "1.0")
     gi.require_version("GstVideo", "1.0")
-    gi.require_version("GLib", "2.0")
-    gi.require_version("GstAnalytics", "1.0")
-    from gi.repository import Gst, GObject, GstAnalytics, GLib
+    from gi.repository import Gst, GObject
 
+    from backend import analytics
     from utils.muxed_buffer_processor import MuxedBufferProcessor
     from video_transform import VideoTransform
     from engine.engine_manager import EngineManager
@@ -337,11 +336,12 @@ class LLMStreamFilter(VideoTransform):
             # Add metadata and push text buffers for selected streams
             for idx, caption in enumerate(captions):
                 if idx in self.selected_streams:
-                    meta = GstAnalytics.buffer_add_analytics_relation_meta(buf)
+                    meta = analytics.add_relation_meta(buf)
                     if meta:
-                        qk = GLib.quark_from_string(f"stream_{idx}_{caption}")
-                        ret, mtd = meta.add_one_cls_mtd(idx, qk)
-                        if ret:
+                        mtd = analytics.add_classification(
+                            meta, idx, f"stream_{idx}_{caption}"
+                        )
+                        if mtd is not None:
                             self.logger.info(f"Stream {idx}: Added caption {caption}")
                         else:
                             self.logger.error(f"Stream {idx}: Failed to add metadata")
