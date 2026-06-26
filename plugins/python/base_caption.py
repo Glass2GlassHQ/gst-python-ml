@@ -17,8 +17,6 @@
 # Boston, MA 02110-1301, USA.
 
 
-from utils.muxed_buffer_processor import MuxedBufferProcessor  # Added import
-
 import gi
 
 gi.require_version("Gst", "1.0")
@@ -26,7 +24,7 @@ gi.require_version("GstBase", "1.0")
 gi.require_version("GstVideo", "1.0")
 
 from gi.repository import Gst, GObject, GstBase  # noqa: E402
-from backend import analytics  # noqa: E402
+from backend import analytics, frameio  # noqa: E402
 from video_transform import VideoTransform
 
 TEXT_CAPS = Gst.Caps.from_string("text/x-raw, format=utf8")
@@ -128,19 +126,13 @@ class BaseCaption(VideoTransform):
 
     def do_transform_ip(self, buf):
         """
-        In-place transformation for captioning inference using MuxedBufferProcessor.
+        In-place transformation for captioning inference, extracting frame(s)
+        through the backend frame I/O.
         """
         try:
-            # Initialize MuxedBufferProcessor with default framerate
-            muxed_processor = MuxedBufferProcessor(
-                self.logger,
-                self.width,
-                self.height,
-                framerate_num=30,
-                framerate_denom=1,
-            )
-            frames, id_str, num_sources, format = muxed_processor.extract_frames(
-                buf, self.sinkpad
+            # Extract frame(s) through the backend's frame I/O.
+            frames, num_sources, _ = frameio.read_frames(
+                buf, self.sinkpad, self.width, self.height
             )
             if frames is None:
                 self.logger.error("Failed to extract frames")
@@ -189,9 +181,7 @@ class BaseCaption(VideoTransform):
                             )
             else:
                 # Batch case
-                self.logger.info(
-                    f"Processing batch with ID={id_str}, num_sources={num_sources}"
-                )
+                self.logger.info(f"Processing batch with num_sources={num_sources}")
                 if self.engine:
                     results = self.engine.do_forward(frames)
                     if results is None:
