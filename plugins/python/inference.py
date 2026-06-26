@@ -28,7 +28,7 @@ try:
     from gi.repository import Gst, GObject
 
     from video_transform import VideoTransform
-    from utils.muxed_buffer_processor import MuxedBufferProcessor
+    from backend import frameio, FlowReturn
 
 except ImportError as e:
     CAN_REGISTER_ELEMENT = False
@@ -69,27 +69,26 @@ class GenericInferenceTransform(VideoTransform):
 
     def do_transform_ip(self, buf):
         try:
-            processor = MuxedBufferProcessor(
-                self.logger, self.width, self.height, 30, 1
+            frames, num_sources, _ = frameio.read_frames(
+                buf, self.sinkpad, self.width, self.height
             )
-            frames, _, num_sources, _ = processor.extract_frames(buf, self.sinkpad)
             if frames is None:
-                return Gst.FlowReturn.ERROR
+                return FlowReturn.ERROR
 
             frame = frames[0] if num_sources > 1 else frames
 
             if not self.engine:
-                return Gst.FlowReturn.OK
+                return FlowReturn.OK
 
             result = self.engine.do_forward(frame)
             if result is not None:
                 self.logger.info(f"inference result: {result}")
 
-            return Gst.FlowReturn.OK
+            return FlowReturn.OK
 
         except Exception as e:
             self.logger.error(f"inference error: {e}")
-            return Gst.FlowReturn.ERROR
+            return FlowReturn.ERROR
 
 
 if CAN_REGISTER_ELEMENT:
