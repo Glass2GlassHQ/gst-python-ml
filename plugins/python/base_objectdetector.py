@@ -20,8 +20,7 @@ import traceback
 from utils.runtime_utils import runtime_check_gstreamer_version
 from video_transform import VideoTransform
 from utils.format_converter import FormatConverter
-from utils.muxed_buffer_processor import MuxedBufferProcessor  # Added import
-from backend import analytics, FlowReturn, GObject
+from backend import analytics, frameio, FlowReturn, GObject
 from tasks.object_detector import ObjectDetectorTask
 from utils.metadata import Metadata
 
@@ -60,20 +59,18 @@ class BaseObjectDetector(VideoTransform, ObjectDetectorTask):
 
     def do_transform_ip(self, buf):
         """
-        Transform the input buffer using MuxedBufferProcessor for frame extraction.
+        Transform the input buffer, extracting frame(s) through the backend
+        frame I/O (single or batched/muxed sources).
         """
         self.logger.info(f"Transforming buffer: {hex(id(buf))}")
         try:
-            # Use MuxedBufferProcessor to extract frames and metadata
-            muxed_processor = MuxedBufferProcessor(
-                self.logger,
+            # Extract frame(s) and source count through the backend's frame I/O.
+            frames, num_sources, format = frameio.read_frames(
+                buf,
+                self.sinkpad,
                 self.width,
                 self.height,
-                self.framerate_num,
-                self.framerate_denom,
-            )
-            frames, id_str, num_sources, format = muxed_processor.extract_frames(
-                buf, self.sinkpad
+                (self.framerate_num, self.framerate_denom),
             )
             if frames is None:
                 self.logger.error("Failed to extract frames")
@@ -90,9 +87,7 @@ class BaseObjectDetector(VideoTransform, ObjectDetectorTask):
                 self.do_decode(buf, results, stream_idx=0)
             # Handle batch case
             else:
-                self.logger.info(
-                    f"Processing batch with ID={id_str}, num_sources={num_sources}"
-                )
+                self.logger.info(f"Processing batch with num_sources={num_sources}")
                 results_list = results if isinstance(results, list) else [results]
                 if len(results_list) != num_sources:
                     self.logger.error(
