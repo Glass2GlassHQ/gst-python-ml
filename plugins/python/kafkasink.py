@@ -22,7 +22,6 @@ CAN_REGISTER_ELEMENT = True
 try:
     import json
     import os
-    from confluent_kafka import Producer
 
     import gi
 
@@ -190,6 +189,10 @@ class KafkaSink(Gst.Element):
     def initialize_producer(self):
         if self.broker and self.topic:
             try:
+                # Imported lazily so a missing confluent_kafka does not break the
+                # element scan; it is only needed once a producer is created.
+                from confluent_kafka import Producer
+
                 config = {
                     "bootstrap.servers": self.broker,
                     "linger.ms": int(self.linger_ms),
@@ -317,5 +320,5 @@ if CAN_REGISTER_ELEMENT:
     __gstelementfactory__ = (KafkaSink.GST_PLUGIN_NAME, Gst.Rank.NONE, KafkaSink)
 else:
     GlobalLogger().warning(
-        "The 'pyml_kafkasink' element will not be registered because confluent_kafka module is missing."
+        "The 'pyml_kafkasink' element will not be registered because required modules are missing."
     )
