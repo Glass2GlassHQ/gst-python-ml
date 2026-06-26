@@ -28,8 +28,7 @@ try:
     gi.require_version("GstVideo", "1.0")
     from gi.repository import Gst, GObject
 
-    from backend import analytics
-    from utils.muxed_buffer_processor import MuxedBufferProcessor
+    from backend import analytics, frameio
     from video_transform import VideoTransform
     from engine.engine_manager import EngineManager
     from utils.caption_utils import load_captions
@@ -276,15 +275,8 @@ class LLMStreamFilter(VideoTransform):
         import torch
 
         try:
-            muxed_processor = MuxedBufferProcessor(
-                self.logger,
-                self.width,
-                self.height,
-                framerate_num=30,
-                framerate_denom=1,
-            )
-            frames, id_str, num_sources, format = muxed_processor.extract_frames(
-                buf, self.sinkpad
+            frames, num_sources, _ = frameio.read_frames(
+                buf, self.sinkpad, self.width, self.height
             )
             if frames is None:
                 self.logger.error("Failed to extract frames")
