@@ -57,6 +57,20 @@ class BaseObjectDetector(VideoTransform, ObjectDetectorTask):
         if self.engine:
             self.engine.track = value
 
+    @GObject.Property(type=str, default="30/1")
+    def framerate(self):
+        "Source framerate as 'num/denom', used for muxed-stream frame timing"
+        return f"{self.framerate_num}/{self.framerate_denom}"
+
+    @framerate.setter
+    def framerate(self, value):
+        try:
+            num, denom = str(value).split("/")
+            self.framerate_num = int(num)
+            self.framerate_denom = int(denom)
+        except (ValueError, AttributeError):
+            self.logger.warning(f"Invalid framerate '{value}', expected 'num/denom'")
+
     def do_transform_ip(self, buf):
         """
         Transform the input buffer, extracting frame(s) through the backend
