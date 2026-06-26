@@ -16,6 +16,8 @@
 # Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 # Boston, MA 02110-1301, USA.
 
+import traceback
+
 import gi
 
 gi.require_version("Gst", "1.0")
@@ -51,3 +53,39 @@ class VideoTransform(BaseTransform):
         self.height = struct.get_int("height").value
 
         return True
+
+    def process_frames(self, frames, num_sources, fmt, target):
+        """Per-frame inference + metadata; the concrete element implements this.
+
+        The framework-agnostic seam shared with the g2g backend: both drivers
+        extract the frame and call this. Default raises so a misconfigured
+        element fails loud rather than silently passing buffers through."""
+        raise NotImplementedError("element must implement process_frames")
+
+    def do_transform_ip(self, buf):
+        """GStreamer per-frame driver: extract the frame(s) through the backend
+        frame I/O, run the element's `process_frames`, and map the outcome to a
+        `Gst.FlowReturn`. Elements supply `process_frames`, not this."""
+        # Imported lazily: the frameio singleton lives in backend.gst, which is
+        # still being constructed when this module is imported.
+        from backend import frameio
+
+        try:
+            frames, num_sources, fmt = frameio.read_frames(
+                buf,
+                self.sinkpad,
+                self.width,
+                self.height,
+                (
+                    getattr(self, "framerate_num", 30),
+                    getattr(self, "framerate_denom", 1),
+                ),
+            )
+            if frames is None:
+                self.logger.error("Failed to extract frames")
+                return Gst.FlowReturn.ERROR
+            self.process_frames(frames, num_sources, fmt, buf)
+            return Gst.FlowReturn.OK
+        except Exception as e:
+            self.logger.error(f"Transform error: {e}\n{traceback.format_exc()}")
+            return Gst.FlowReturn.ERROR

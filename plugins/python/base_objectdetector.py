@@ -16,11 +16,10 @@
 # Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 # Boston, MA 02110-1301, USA.
 
-import traceback
 from utils.runtime_utils import runtime_check_gstreamer_version
 from video_transform import VideoTransform
 from utils.format_converter import FormatConverter
-from backend import analytics, frameio, FlowReturn, GObject
+from backend import analytics, GObject
 from tasks.object_detector import ObjectDetectorTask
 from utils.metadata import Metadata
 
@@ -71,59 +70,40 @@ class BaseObjectDetector(VideoTransform, ObjectDetectorTask):
         except (ValueError, AttributeError):
             self.logger.warning(f"Invalid framerate '{value}', expected 'num/denom'")
 
-    def do_transform_ip(self, buf):
+    def process_frames(self, frames, num_sources, fmt, target):
         """
-        Transform the input buffer, extracting frame(s) through the backend
-        frame I/O (single or batched/muxed sources).
+        Run detection on the extracted frame(s) and attach results to `target`.
+
+        Backend-agnostic per-frame hook: frame extraction and the FlowReturn
+        wrapping live in the backend driver (the gst `do_transform_ip` /
+        the g2g `g2g_process`), so the inference + metadata here is identical on
+        every backend. Raises on a hard failure; the driver maps that to its own
+        error return.
         """
-        self.logger.info(f"Transforming buffer: {hex(id(buf))}")
-        try:
-            # Extract frame(s) and source count through the backend's frame I/O.
-            frames, num_sources, format = frameio.read_frames(
-                buf,
-                self.sinkpad,
-                self.width,
-                self.height,
-                (self.framerate_num, self.framerate_denom),
-            )
-            if frames is None:
-                self.logger.error("Failed to extract frames")
-                return FlowReturn.ERROR
+        results = self.do_forward(frames)
+        if results is None:
+            raise RuntimeError("inference returned None")
 
-            # Process frames (single or batch)
-            results = self.do_forward(frames)
-            if results is None:
-                self.logger.error("Inference returned None")
-                return FlowReturn.ERROR
+        # Single-frame case
+        if num_sources == 1:
+            self.do_decode(target, results, stream_idx=0)
+        # Batch case
+        else:
+            self.logger.info(f"Processing batch with num_sources={num_sources}")
+            results_list = results if isinstance(results, list) else [results]
+            if len(results_list) != num_sources:
+                raise RuntimeError(
+                    f"expected {num_sources} results, got {len(results_list)}"
+                )
+            for idx, result in enumerate(results_list):
+                if result is None:
+                    self.logger.warning(f"Frame {idx} result is None")
+                    continue
+                self.do_decode(target, result, stream_idx=idx)
 
-            # Handle single-frame case
-            if num_sources == 1:
-                self.do_decode(buf, results, stream_idx=0)
-            # Handle batch case
-            else:
-                self.logger.info(f"Processing batch with num_sources={num_sources}")
-                results_list = results if isinstance(results, list) else [results]
-                if len(results_list) != num_sources:
-                    self.logger.error(
-                        f"Expected {num_sources} results, got {len(results_list)}"
-                    )
-                    return FlowReturn.ERROR
-
-                for idx, result in enumerate(results_list):
-                    if result is None:
-                        self.logger.warning(f"Frame {idx} result is None")
-                        continue
-                    self.do_decode(buf, result, stream_idx=idx)
-
-            attached_meta = analytics.get_relation_meta(buf)
-            if attached_meta:
-                count = analytics.relation_length(attached_meta)
-                self.logger.info(f"Total metadata relations attached: {count}")
-            else:
-                self.logger.debug("No detections on this buffer")
-
-            return FlowReturn.OK
-
-        except Exception as e:
-            self.logger.error(f"Transform error: {e}\n{traceback.format_exc()}")
-            return FlowReturn.ERROR
+        attached_meta = analytics.get_relation_meta(target)
+        if attached_meta:
+            count = analytics.relation_length(attached_meta)
+            self.logger.info(f"Total metadata relations attached: {count}")
+        else:
+            self.logger.debug("No detections on this buffer")
